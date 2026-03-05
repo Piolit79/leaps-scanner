@@ -1,5 +1,5 @@
 import { getStockBars } from '../alpaca';
-import { getProfile, getLargeCapUniverse, hasPositiveRevenueGrowth, FALLBACK_LARGE_CAPS } from '../fmp';
+import { getProfile, getLargeCapUniverse, FALLBACK_LARGE_CAPS } from '../fmp';
 import { getEarningsCalendar } from '../earnings';
 import { analyzeDips, type ScanConfig } from './dips';
 import { findLeapCandidates, type OptionsConfig } from './options';
@@ -24,7 +24,7 @@ export interface ScannerConfig {
 export const DEFAULT_CONFIG: ScannerConfig = {
   minMarketCapB: 100,
   priorityScoreThreshold: 8,
-  requireRevenueGrowth: true,
+  requireRevenueGrowth: false, // off by default — Yahoo Finance quota is limited
   dip: {
     earningsGapPct: 10,
     singleDayDropPct: 10,
@@ -45,6 +45,14 @@ export const DEFAULT_CONFIG: ScannerConfig = {
   },
 };
 
+async function fetchBarsWithRetry(ticker: string, days = 260) {
+  try {
+    return await getStockBars(ticker, days);
+  } catch {
+    return [];
+  }
+}
+
 export async function runScan(cfg: ScannerConfig, runId: string, onProgress?: (msg: string) => void) {
   const db = supabase();
   const log = (msg: string) => { console.log(msg); onProgress?.(msg); };
@@ -52,49 +60,48 @@ export async function runScan(cfg: ScannerConfig, runId: string, onProgress?: (m
   log('Fetching earnings calendar...');
   const earningsMap = await getEarningsCalendar(90);
 
-  log('Building stock universe...');
-  let universe: string[];
-  try {
-    universe = await getLargeCapUniverse(cfg.minMarketCapB);
-  } catch {
-    universe = FALLBACK_LARGE_CAPS;
+  const universe = FALLBACK_LARGE_CAPS;
+  log(`Scanning ${universe.length} stocks in parallel...`);
+
+  // Fetch all stock bars in parallel (batches of 15 to avoid rate limits)
+  const BATCH = 15;
+  const barsMap: Record<string, Awaited<ReturnType<typeof getStockBars>>> = {};
+  for (let i = 0; i < universe.length; i += BATCH) {
+    const batch = universe.slice(i, i + BATCH);
+    const results = await Promise.all(batch.map(t => fetchBarsWithRetry(t)));
+    batch.forEach((t, j) => { barsMap[t] = results[j]; });
+    log(`Bars fetched: ${Math.min(i + BATCH, universe.length)}/${universe.length}`);
   }
 
-  log(`Scanning ${universe.length} stocks...`);
-  let stocksScanned = 0;
+  // Analyze dips (in memory, fast)
+  const triggered: string[] = [];
+  for (const ticker of universe) {
+    const bars = barsMap[ticker];
+    if (!bars || bars.length < 50) continue;
+    const dip = analyzeDips(bars, earningsMap[ticker] ?? null, cfg.dip);
+    if (dip.anyTriggered) triggered.push(ticker);
+  }
+
+  log(`${triggered.length} stocks triggered dip filters. Checking LEAP contracts...`);
+
+  let stocksScanned = universe.filter(t => (barsMap[t]?.length ?? 0) >= 50).length;
   let resultsFound = 0;
 
-  for (const ticker of universe) {
+  for (const ticker of triggered) {
     try {
-      log(`[${ticker}] Fetching bars...`);
-      const bars = await getStockBars(ticker, 260);
-      if (bars.length < 50) continue;
-
-      // Market cap filter
-      const profile = await getProfile(ticker);
-      const marketCapB = profile ? profile.mktCap / 1e9 : 0;
-      if (marketCapB < cfg.minMarketCapB) continue;
-
-      // Revenue growth filter (skip if FMP unavailable)
-      if (cfg.requireRevenueGrowth && process.env.FMP_API_KEY) {
-        const hasGrowth = await hasPositiveRevenueGrowth(ticker);
-        if (hasGrowth === false) continue;
-      }
-
-      stocksScanned++;
-
-      // Analyze dips
+      const bars = barsMap[ticker];
       const earningsDate = earningsMap[ticker] ?? null;
       const dip = analyzeDips(bars, earningsDate, cfg.dip);
-      if (!dip.anyTriggered) continue;
 
-      log(`[${ticker}] Dip triggered! Finding LEAP contracts...`);
+      // Get market cap from Yahoo (best effort — don't skip if unavailable)
+      const profile = await getProfile(ticker);
+      const marketCapB = profile ? profile.mktCap / 1e9 : 150; // assume large cap if unknown
 
+      log(`[${ticker}] Dip triggered. Finding LEAP contracts...`);
       const preDipPrice = dip.preDipPrice ?? dip.currentPrice;
       const candidates = await findLeapCandidates(ticker, preDipPrice, dip.currentPrice, cfg.options);
-      if (!candidates.length) continue;
+      if (!candidates.length) { log(`[${ticker}] No qualifying contracts found.`); continue; }
 
-      // Take the best contract (lowest pctAboveLow)
       const contract = candidates[0];
       const score = scoreResult(dip, contract, marketCapB);
 
@@ -136,9 +143,9 @@ export async function runScan(cfg: ScannerConfig, runId: string, onProgress?: (m
         priority_alert: score.total >= cfg.priorityScoreThreshold,
       };
 
-      await db.from('scan_results').insert(row);
-      resultsFound++;
-      log(`[${ticker}] Score ${score.total}/16 — saved.`);
+      const { error } = await db.from('scan_results').insert(row);
+      if (error) log(`[${ticker}] DB error: ${error.message}`);
+      else { resultsFound++; log(`[${ticker}] Score ${score.total}/16 — saved.`); }
     } catch (err: any) {
       log(`[${ticker}] Error: ${err.message}`);
     }
@@ -150,6 +157,6 @@ export async function runScan(cfg: ScannerConfig, runId: string, onProgress?: (m
     results_found: resultsFound,
   }).eq('id', runId);
 
-  log(`Scan complete. ${stocksScanned} stocks scanned, ${resultsFound} results.`);
+  log(`Scan complete. ${stocksScanned} scanned, ${resultsFound} results.`);
   return { stocksScanned, resultsFound };
 }

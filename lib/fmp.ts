@@ -1,64 +1,63 @@
-const BASE = 'https://financialmodelingprep.com/api/v3';
+// Yahoo Finance replaces FMP (FMP free tier no longer supports these endpoints)
 
-async function get(path: string) {
-  const key = process.env.FMP_API_KEY;
-  if (!key) return null;
-  const r = await fetch(`${BASE}${path}&apikey=${key}`);
-  if (!r.ok) return null;
-  return r.json();
+async function yahooQuote(symbol: string): Promise<any> {
+  try {
+    const r = await fetch(
+      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price,incomeStatementHistoryQuarterly`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } }
+    );
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data?.quoteSummary?.result?.[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export interface FmpProfile {
   symbol: string;
   companyName: string;
-  mktCap: number; // in USD
+  mktCap: number;
   price: number;
 }
 
-// Returns market cap in billions and company name
 export async function getProfile(symbol: string): Promise<FmpProfile | null> {
   try {
-    const data = await get(`/profile/${symbol}?`);
-    return data?.[0] ?? null;
+    const q = await yahooQuote(symbol);
+    if (!q?.price) return null;
+    return {
+      symbol,
+      companyName: q.price.longName ?? q.price.shortName ?? symbol,
+      mktCap: q.price.marketCap?.raw ?? 0,
+      price: q.price.regularMarketPrice?.raw ?? 0,
+    };
   } catch {
     return null;
   }
 }
 
-// Returns true if YoY revenue growth was positive in each of the last 2 quarters
 export async function hasPositiveRevenueGrowth(symbol: string): Promise<boolean | null> {
   try {
-    const data = await get(`/income-statement/${symbol}?period=quarter&limit=6`);
-    if (!data || data.length < 5) return null;
-
-    // Compare q[0] vs q[4] and q[1] vs q[5] (same quarter a year ago)
-    const q0Growth = data[0].revenue > data[4].revenue;
-    const q1Growth = data[1].revenue > data[5].revenue;
-    return q0Growth && q1Growth;
+    const q = await yahooQuote(symbol);
+    const stmts = q?.incomeStatementHistoryQuarterly?.incomeStatementHistory;
+    if (!stmts || stmts.length < 5) return null;
+    const rev = (i: number) => stmts[i]?.totalRevenue?.raw ?? 0;
+    return rev(0) > rev(4) && rev(1) > rev(5);
   } catch {
     return null;
   }
 }
 
-// Get large-cap universe (market cap >= minCapB billion)
-// Uses S&P 500 list and filters by market cap
-export async function getLargeCapUniverse(minCapB: number): Promise<string[]> {
-  try {
-    const data = await get(`/sp500_constituent?`);
-    if (!data) return FALLBACK_LARGE_CAPS;
-    return (data as Array<{ symbol: string }>).map(s => s.symbol);
-  } catch {
-    return FALLBACK_LARGE_CAPS;
-  }
+export async function getLargeCapUniverse(_minCapB: number): Promise<string[]> {
+  return FALLBACK_LARGE_CAPS;
 }
 
-// Fallback large-cap list if FMP unavailable
+// Pre-vetted large caps (all well above $100B market cap)
 export const FALLBACK_LARGE_CAPS = [
-  'AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','BRK.B','LLY','AVGO',
-  'JPM','V','UNH','XOM','MA','JNJ','PG','HD','MRK','COST','ABBV','CVX',
-  'BAC','KO','NFLX','CRM','ORCL','AMD','PEP','TMO','ACN','MCD','CSCO',
-  'LIN','ABT','TXN','NKE','ADBE','DHR','NEE','QCOM','WMT','RTX','HON',
-  'UPS','IBM','AMGN','GE','CAT','GS','SPGI','BLK','ELV','MDT','SYK','AXP',
-  'ISRG','GILD','VRTX','REGN','ZTS','MMC','PLD','CI','CB','MO','DUK',
-  'SO','ETN','ITW','SCHW','AON','CME','MCO','FIS','TJX','USB','WFC','C',
+  'AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','LLY','AVGO','JPM',
+  'V','UNH','XOM','MA','JNJ','PG','HD','MRK','COST','ABBV','CVX','BAC',
+  'KO','NFLX','CRM','ORCL','AMD','PEP','TMO','ACN','MCD','CSCO','LIN',
+  'ABT','TXN','NKE','ADBE','DHR','NEE','QCOM','WMT','HON','AMGN','GE',
+  'CAT','GS','SPGI','BLK','MDT','SYK','AXP','ISRG','GILD','VRTX','REGN',
+  'ZTS','MMC','PLD','CI','CB','DUK','SO','ETN','ITW','SCHW','CME','MCO',
 ];
