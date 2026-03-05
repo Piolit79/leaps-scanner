@@ -21,7 +21,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: `DB connection failed: ${e.message}` });
   }
 
-  const cfg = { ...DEFAULT_CONFIG, ...(req.body?.config ?? {}) };
+  const override = req.body?.config ?? {};
+  const cfg = {
+    ...DEFAULT_CONFIG,
+    ...override,
+    dip: { ...DEFAULT_CONFIG.dip, ...(override.dip ?? {}) },
+    options: { ...DEFAULT_CONFIG.options, ...(override.options ?? {}) },
+  };
 
   try {
     const result = await runScan(cfg, run.id);

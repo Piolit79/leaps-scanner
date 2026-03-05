@@ -8,6 +8,7 @@ interface Result {
   market_cap_b: number;
   current_price: number;
   pre_dip_price: number;
+  strike: number;
   trigger_earnings_gap: boolean;
   trigger_single_day: boolean;
   trigger_high_drop: boolean;
@@ -17,13 +18,11 @@ interface Result {
   drop_30day_pct: number;
   dip_date: string;
   contract_symbol: string;
-  strike: number;
   expiry: string;
   dte: number;
   contract_price: number;
-  contract_low_alltime: number;
-  pct_above_low: number;
   open_interest: number;
+  iv_current: number | null;
   iv_rank: number | null;
   score: number;
   score_breakdown: Record<string, number>;
@@ -42,20 +41,32 @@ function Trigger({ label, active }: { label: string; active: boolean }) {
 }
 
 function ScoreBar({ score }: { score: number }) {
-  const pct = Math.min((score / 16) * 100, 100);
+  const width = Math.min((score / 14) * 100, 100);
   const color = score >= 10 ? 'bg-green-500' : score >= 8 ? 'bg-yellow-500' : 'bg-blue-500';
   return (
     <div className="flex items-center gap-2">
       <div className="w-20 bg-muted rounded-full h-1.5">
-        <div className={cn('h-1.5 rounded-full', color)} style={{ width: `${pct}%` }} />
+        <div className={cn('h-1.5 rounded-full', color)} style={{ width: `${width}%` }} />
       </div>
-      <span className="text-xs font-bold">{score}/16</span>
+      <span className="text-xs font-bold">{score}/14</span>
     </div>
   );
 }
 
-export default function ResultsTable({ results }: { results: Result[] }) {
-  if (!results.length) {
+function IvCell({ iv }: { iv: number | null }) {
+  if (iv == null) return <span className="text-muted-foreground">—</span>;
+  const pctVal = iv * 100;
+  const color = iv < 0.20 ? 'text-green-400' : iv < 0.35 ? 'text-yellow-400' : 'text-muted-foreground';
+  return <span className={color}>{fmt(pctVal, 0)}%</span>;
+}
+
+interface Props {
+  results: Result[];
+  totalCount: number;
+}
+
+export default function ResultsTable({ results, totalCount }: Props) {
+  if (totalCount === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground">
         <p className="text-lg">No results yet.</p>
@@ -66,7 +77,12 @@ export default function ResultsTable({ results }: { results: Result[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <div className="text-xs text-muted-foreground mb-3">{results.length} result{results.length !== 1 ? 's' : ''}</div>
+      <div className="text-xs text-muted-foreground mb-3">
+        {results.length} result{results.length !== 1 ? 's' : ''}
+        {results.length < totalCount && (
+          <span className="ml-1">(filtered from {totalCount})</span>
+        )}
+      </div>
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr className="border-b border-border text-muted-foreground text-left">
@@ -77,10 +93,8 @@ export default function ResultsTable({ results }: { results: Result[] }) {
             <th className="py-2 pr-4">Dip Date</th>
             <th className="py-2 pr-4">Contract</th>
             <th className="py-2 pr-4">Price</th>
-            <th className="py-2 pr-4">All-Time Low</th>
-            <th className="py-2 pr-4">% Above Low</th>
+            <th className="py-2 pr-4">IV</th>
             <th className="py-2 pr-4">OI</th>
-            <th className="py-2 pr-4">IV Rank</th>
             <th className="py-2 pr-4">Score</th>
           </tr>
         </thead>
@@ -106,9 +120,9 @@ export default function ResultsTable({ results }: { results: Result[] }) {
               </td>
               <td className="py-2.5 pr-4">
                 <Trigger label="EPS Gap" active={r.trigger_earnings_gap} />
-                <Trigger label="1-Day" active={r.trigger_single_day} />
-                <Trigger label="52w High" active={r.trigger_high_drop} />
-                <Trigger label="30-Day" active={r.trigger_rolling} />
+                <Trigger label="1-Day"   active={r.trigger_single_day} />
+                <Trigger label="52w Hi"  active={r.trigger_high_drop} />
+                <Trigger label="30-Day"  active={r.trigger_rolling} />
               </td>
               <td className={cn('py-2.5 pr-4', r.drop_1day_pct < -5 ? 'text-red-400' : 'text-muted-foreground')}>
                 {r.drop_1day_pct != null ? pct(r.drop_1day_pct / 100) : '—'}
@@ -122,21 +136,9 @@ export default function ResultsTable({ results }: { results: Result[] }) {
                 <div className="text-muted-foreground">Strike ${fmt(r.strike, 0)} · {r.dte}d</div>
               </td>
               <td className="py-2.5 pr-4 font-semibold">${fmt(r.contract_price)}</td>
-              <td className="py-2.5 pr-4 text-muted-foreground">${fmt(r.contract_low_alltime)}</td>
-              <td className={cn('py-2.5 pr-4 font-semibold', r.pct_above_low <= 10 ? 'text-green-400' : 'text-yellow-400')}>
-                +{fmt(r.pct_above_low)}%
-              </td>
+              <td className="py-2.5 pr-4"><IvCell iv={r.iv_current} /></td>
               <td className="py-2.5 pr-4">{r.open_interest?.toLocaleString()}</td>
-              <td className="py-2.5 pr-4">
-                {r.iv_rank != null ? (
-                  <span className={r.iv_rank < 30 ? 'text-green-400' : 'text-muted-foreground'}>
-                    {fmt(r.iv_rank, 0)}
-                  </span>
-                ) : '—'}
-              </td>
-              <td className="py-2.5 pr-4">
-                <ScoreBar score={r.score} />
-              </td>
+              <td className="py-2.5 pr-4"><ScoreBar score={r.score} /></td>
             </tr>
           ))}
         </tbody>

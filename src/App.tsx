@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ResultsTable from './components/ResultsTable';
+import FilterPanel, { DEFAULT_FILTERS, type FilterState } from './components/FilterPanel';
 import { Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const queryClient = new QueryClient();
@@ -11,16 +12,85 @@ async function fetchResults() {
   return r.json();
 }
 
-async function triggerScan() {
-  const r = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+async function triggerScan(config: object) {
+  const r = await fetch('/api/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config }),
+  });
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status} — empty response` }));
   if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
   return data;
 }
 
+function buildScanConfig(f: FilterState) {
+  const dteMap: Record<string, { minDte: number; maxDte: number }> = {
+    'any':   { minDte: 365, maxDte: 900 },
+    '12-18': { minDte: 365, maxDte: 548 },
+    '18-24': { minDte: 548, maxDte: 730 },
+    '24-30': { minDte: 730, maxDte: 900 },
+  };
+  const dipSeverityPct: Record<string, number> = {
+    'any': 15, '15-20': 15, '20-30': 20, '30+': 30,
+  };
+  return {
+    options: { ...dteMap[f.dte], minOpenInterest: parseInt(f.minOI) },
+    dip: { highDropPct: dipSeverityPct[f.dipSeverity] },
+    dipTypeFilter: f.dipType,
+  };
+}
+
+function applyDisplayFilters(results: any[], f: FilterState): any[] {
+  return results.filter(r => {
+    // Market cap
+    if (f.marketCap === '50-100'  && !(r.market_cap_b >= 50  && r.market_cap_b < 100)) return false;
+    if (f.marketCap === '100-200' && !(r.market_cap_b >= 100 && r.market_cap_b < 200)) return false;
+    if (f.marketCap === '200+'    && r.market_cap_b < 200) return false;
+
+    // DTE
+    if (f.dte === '12-18' && !(r.dte >= 365 && r.dte < 548)) return false;
+    if (f.dte === '18-24' && !(r.dte >= 548 && r.dte < 730)) return false;
+    if (f.dte === '24-30' && !(r.dte >= 730))                 return false;
+
+    // Delta approximated from strike / current_price
+    const sr = r.current_price > 0 ? r.strike / r.current_price : 1;
+    if (f.delta === 'deep-itm'     && sr >= 0.93)               return false;
+    if (f.delta === 'near-atm'     && !(sr >= 0.93 && sr < 1.07)) return false;
+    if (f.delta === 'slightly-otm' && sr < 1.07)                return false;
+
+    // Dip type
+    if (f.dipType === 'earnings_only'  && !r.trigger_earnings_gap) return false;
+    if (f.dipType === 'any_single_day' && !r.trigger_earnings_gap && !r.trigger_single_day) return false;
+
+    // Dip severity (drop_from_high_pct is negative)
+    const fromHigh = r.drop_from_high_pct ?? 0;
+    if (f.dipSeverity === '15-20' && !(fromHigh <= -15 && fromHigh > -20)) return false;
+    if (f.dipSeverity === '20-30' && !(fromHigh <= -20 && fromHigh > -30)) return false;
+    if (f.dipSeverity === '30+'   && fromHigh > -30)                        return false;
+
+    // Single-day drop (drop_1day_pct is negative)
+    const d1 = r.drop_1day_pct ?? 0;
+    if (f.singleDay === '8-12'  && !(d1 <= -8  && d1 > -12)) return false;
+    if (f.singleDay === '12-18' && !(d1 <= -12 && d1 > -18)) return false;
+    if (f.singleDay === '18+'   && d1 > -18)                  return false;
+
+    // Open interest
+    if (r.open_interest < parseInt(f.minOI)) return false;
+
+    // IV (iv_current is decimal: 0.30 = 30%)
+    const iv = r.iv_current;
+    if (f.iv === 'very-low' && (iv == null || iv >= 0.20))          return false;
+    if (f.iv === 'low'      && (iv == null || iv < 0.20 || iv >= 0.35)) return false;
+    if (f.iv === 'moderate' && (iv == null || iv < 0.35 || iv >= 0.50)) return false;
+
+    return true;
+  });
+}
+
 function Scanner() {
   const qc = useQueryClient();
   const [msg, setMsg] = useState('');
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['results'],
@@ -29,12 +99,16 @@ function Scanner() {
   });
 
   const scan = useMutation({
-    mutationFn: triggerScan,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['results'] }); setMsg('Scan complete!'); },
+    mutationFn: () => triggerScan(buildScanConfig(filters)),
+    onSuccess: (d) => {
+      qc.invalidateQueries({ queryKey: ['results'] });
+      setMsg(`Scan complete! ${d.resultsFound ?? 0} results found.`);
+    },
     onError: (e: any) => setMsg(`Error: ${e.message}`),
   });
 
-  const results = data?.results ?? [];
+  const allResults = data?.results ?? [];
+  const results = applyDisplayFilters(allResults, filters);
   const priorityCount = results.filter((r: any) => r.priority_alert).length;
 
   return (
@@ -64,7 +138,7 @@ function Scanner() {
 
       {scan.isPending && (
         <div className="mx-6 mt-4 p-3 bg-muted rounded text-xs text-muted-foreground">
-          Scan running — analyzing {'>'}70 large-cap stocks for dip setups + LEAP contracts. Takes 3–5 min.
+          Scan running — analyzing {'>'}60 large-cap stocks for dip setups + LEAP contracts. Takes 2–4 min.
         </div>
       )}
       {msg && !scan.isPending && (
@@ -72,13 +146,23 @@ function Scanner() {
       )}
 
       <main className="p-6">
+        <FilterPanel
+          filters={filters}
+          onChange={setFilters}
+          onReset={() => setFilters(DEFAULT_FILTERS)}
+        />
         {isLoading && (
           <div className="flex items-center gap-2 text-muted-foreground text-sm">
             <Loader2 size={16} className="animate-spin" /> Loading results...
           </div>
         )}
         {error && <p className="text-destructive text-sm">Failed to load results.</p>}
-        {!isLoading && !error && <ResultsTable results={results} />}
+        {!isLoading && !error && (
+          <ResultsTable
+            results={results}
+            totalCount={allResults.length}
+          />
+        )}
       </main>
     </div>
   );

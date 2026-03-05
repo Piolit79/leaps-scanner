@@ -17,8 +17,10 @@ export interface ScannerConfig {
   dip: ScanConfig;
   options: OptionsConfig;
   minMarketCapB: number;
+  maxMarketCapB?: number;
   priorityScoreThreshold: number;
   requireRevenueGrowth: boolean;
+  dipTypeFilter?: 'any' | 'earnings_only' | 'any_single_day';
 }
 
 export const DEFAULT_CONFIG: ScannerConfig = {
@@ -74,12 +76,16 @@ export async function runScan(cfg: ScannerConfig, runId: string, onProgress?: (m
   }
 
   // Analyze dips (in memory, fast)
+  const dipFilter = cfg.dipTypeFilter ?? 'any';
   const triggered: string[] = [];
   for (const ticker of universe) {
     const bars = barsMap[ticker];
     if (!bars || bars.length < 50) continue;
     const dip = analyzeDips(bars, earningsMap[ticker] ?? null, cfg.dip);
-    if (dip.anyTriggered) triggered.push(ticker);
+    if (!dip.anyTriggered) continue;
+    if (dipFilter === 'earnings_only' && !dip.triggerEarningsGap) continue;
+    if (dipFilter === 'any_single_day' && !dip.triggerEarningsGap && !dip.triggerSingleDay) continue;
+    triggered.push(ticker);
   }
 
   log(`${triggered.length} stocks triggered dip filters. Checking LEAP contracts...`);
@@ -93,9 +99,11 @@ export async function runScan(cfg: ScannerConfig, runId: string, onProgress?: (m
       const earningsDate = earningsMap[ticker] ?? null;
       const dip = analyzeDips(bars, earningsDate, cfg.dip);
 
-      // Get market cap from Yahoo (best effort — don't skip if unavailable)
+      // Get market cap from Yahoo (best effort)
       const profile = await getProfile(ticker);
       const marketCapB = profile ? profile.mktCap / 1e9 : 150; // assume large cap if unknown
+      if (marketCapB < cfg.minMarketCapB) { log(`[${ticker}] Market cap ${marketCapB.toFixed(0)}B below threshold.`); continue; }
+      if (cfg.maxMarketCapB && marketCapB > cfg.maxMarketCapB) { log(`[${ticker}] Market cap ${marketCapB.toFixed(0)}B above max.`); continue; }
 
       log(`[${ticker}] Dip triggered. Finding LEAP contracts...`);
       const preDipPrice = dip.preDipPrice ?? dip.currentPrice;
