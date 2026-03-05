@@ -83,11 +83,22 @@ export function analyzeDips(bars: Bar[], earningsDate: string | null, cfg: ScanC
     }
   }
 
-  // For non-earnings dips, use most recent significant drop date as dip date
+  // For non-earnings dips, find the meaningful dip date
   if (!dipDate && (triggerSingleDay || triggerHighDrop || triggerRolling)) {
-    dipDate = bars.at(-1)!.t.slice(0, 10);
-    // Pre-dip price: close before the rolling window started
-    preDipPrice = bars.slice(-cfg.rollingDays - 1)[0]?.c ?? currentPrice;
+    if (triggerHighDrop) {
+      // Dip date = the bar that was the 52-week high (the peak before the drop)
+      const peakBar = yr.reduce((best, b) => b.h > best.h ? b : best, yr[0]);
+      dipDate = peakBar.t.slice(0, 10);
+      preDipPrice = peakBar.c;
+    } else if (triggerRolling) {
+      // Dip date = start of the 30-day rolling window
+      dipDate = rolling[0].t.slice(0, 10);
+      preDipPrice = rolling[0].c;
+    } else {
+      // triggerSingleDay: the drop happened on the most recent bar
+      dipDate = bars.at(-1)!.t.slice(0, 10);
+      preDipPrice = bars.slice(-cfg.rollingDays - 1)[0]?.c ?? currentPrice;
+    }
   }
 
   // Pre-dip above 200 SMA check
