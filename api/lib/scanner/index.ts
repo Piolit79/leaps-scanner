@@ -107,7 +107,7 @@ export async function runScan(cfg: ScannerConfig, runId: string, onProgress?: (m
 
       log(`[${ticker}] Dip triggered. Finding LEAP contracts...`);
       const preDipPrice = dip.preDipPrice ?? dip.currentPrice;
-      const candidates = await findLeapCandidates(ticker, preDipPrice, dip.currentPrice, cfg.options);
+      const candidates = await findLeapCandidates(ticker, preDipPrice, dip.currentPrice, cfg.options, bars);
       if (!candidates.length) { log(`[${ticker}] No qualifying contracts found.`); continue; }
 
       const contract = candidates[0];

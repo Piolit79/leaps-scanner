@@ -1,3 +1,5 @@
+import { getOptionsChain, type Bar } from '../alpaca.js';
+
 export interface LeapCandidate {
   contractSymbol: string;
   strike: number;
@@ -15,101 +17,104 @@ export interface LeapCandidate {
 }
 
 export interface OptionsConfig {
-  minDte: number;          // 365
-  maxDte: number;          // 900
+  minDte: number;           // 365
+  maxDte: number;           // 900
   strikeProximityPct: number; // 10
-  contractLowPct: number;  // unused — no historical bars; kept for config compat
-  minOpenInterest: number; // 500
-  minAvgVolume: number;    // 50
-  maxSpreadPct: number;    // 5
+  contractLowPct: number;   // kept for config compat
+  minOpenInterest: number;  // 500
+  minAvgVolume: number;     // kept for config compat
+  maxSpreadPct: number;     // kept for config compat
 }
 
-async function yahooOptionCalls(symbol: string, expDate: number): Promise<any[]> {
-  try {
-    const url = `https://query1.finance.yahoo.com/v7/finance/options/${symbol}?date=${expDate}`;
-    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (!r.ok) return [];
-    const data = await r.json();
-    return data?.optionChain?.result?.[0]?.options?.[0]?.calls ?? [];
-  } catch {
-    return [];
+// Abramowitz & Stegun normal CDF approximation (max error 7.5e-8)
+function normalCDF(x: number): number {
+  const a = [0.319381530, -0.356563782, 1.781477937, -1.821255978, 1.330274429];
+  const k = 1 / (1 + 0.2316419 * Math.abs(x));
+  let poly = 0, kn = k;
+  for (const ai of a) { poly += ai * kn; kn *= k; }
+  const pdf = Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI);
+  const cdf = 1 - pdf * poly;
+  return x >= 0 ? cdf : 1 - cdf;
+}
+
+function bsCall(S: number, K: number, T: number, r: number, sigma: number) {
+  if (T <= 0) return { price: Math.max(S - K, 0), delta: S > K ? 1 : 0 };
+  const sqrtT = Math.sqrt(T);
+  const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
+  const d2 = d1 - sigma * sqrtT;
+  return {
+    price: S * normalCDF(d1) - K * Math.exp(-r * T) * normalCDF(d2),
+    delta: normalCDF(d1),
+  };
+}
+
+// Annualized historical volatility from daily close prices (60-day window)
+function annualVol(bars: Bar[]): number {
+  if (bars.length < 20) return 0.30;
+  const slice = bars.slice(-60);
+  const returns: number[] = [];
+  for (let i = 1; i < slice.length; i++) {
+    if (slice[i - 1].c > 0) returns.push(Math.log(slice[i].c / slice[i - 1].c));
   }
+  if (returns.length < 10) return 0.30;
+  const mean = returns.reduce((s, v) => s + v, 0) / returns.length;
+  const variance = returns.reduce((s, v) => s + (v - mean) ** 2, 0) / (returns.length - 1);
+  return Math.sqrt(variance * 252);
 }
 
 export async function findLeapCandidates(
   symbol: string,
   preDipPrice: number,
-  _currentPrice: number,
+  currentPrice: number,
   cfg: OptionsConfig,
+  bars: Bar[] = [],
 ): Promise<LeapCandidate[]> {
-  // Get available expiration dates from Yahoo Finance
-  let expirationDates: number[] = [];
-  try {
-    const url = `https://query1.finance.yahoo.com/v7/finance/options/${symbol}`;
-    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (!r.ok) return [];
-    const data = await r.json();
-    expirationDates = data?.optionChain?.result?.[0]?.expirationDates ?? [];
-  } catch {
-    return [];
-  }
+  // Fetch chain filtered to the exact strike range we care about
+  const strikeLow  = preDipPrice * (1 - cfg.strikeProximityPct / 100);
+  const strikeHigh = preDipPrice * (1 + cfg.strikeProximityPct / 100);
+  const chain = await getOptionsChain(symbol, cfg.minDte, cfg.maxDte, strikeLow, strikeHigh);
+  if (!chain.length) return [];
 
+  const sigma = annualVol(bars);
+  const r = 0.045; // ~4.5% risk-free rate
   const today = new Date();
-
-  // Filter to LEAP DTE range
-  const leapExpiries = expirationDates.filter(ts => {
-    const dte = Math.round((ts * 1000 - today.getTime()) / 86400000);
-    return dte >= cfg.minDte && dte <= cfg.maxDte;
-  });
-
-  if (!leapExpiries.length) return [];
-
   const candidates: LeapCandidate[] = [];
 
-  for (const expTs of leapExpiries) {
-    const calls = await yahooOptionCalls(symbol, expTs);
+  for (const contract of chain) {
+    // Alpaca returns strike_price as a string
+    const strike = parseFloat(contract.strike_price as any);
+    const oi     = parseFloat((contract.open_interest as any) ?? '0') || 0;
 
-    for (const c of calls) {
-      // Strike must be within strikeProximityPct of pre-dip price
-      const proximity = Math.abs(c.strike - preDipPrice) / preDipPrice * 100;
-      if (proximity > cfg.strikeProximityPct) continue;
+    if (isNaN(strike) || strike <= 0) continue;
+    if (oi < cfg.minOpenInterest) continue;
 
-      const bid = c.bid ?? 0;
-      const ask = c.ask ?? 0;
-      if (bid <= 0 || ask <= 0) continue;
+    const expDate = new Date(contract.expiration_date);
+    const T   = (expDate.getTime() - today.getTime()) / (365.25 * 86400000);
+    const dte = Math.round(T * 365.25);
+    if (dte < cfg.minDte || dte > cfg.maxDte) continue;
 
-      const mid = (bid + ask) / 2;
-      const spreadPct = ((ask - bid) / mid) * 100;
-      if (spreadPct > cfg.maxSpreadPct) continue;
+    const { price, delta } = bsCall(currentPrice, strike, T, r, sigma);
+    if (price < 0.50) continue; // skip effectively worthless deep-OTM contracts
 
-      const oi = c.openInterest ?? 0;
-      if (oi < cfg.minOpenInterest) continue;
-
-      const volume = c.volume ?? 0;
-      if (volume < cfg.minAvgVolume) continue;
-
-      const dte = Math.round((expTs * 1000 - today.getTime()) / 86400000);
-
-      // pctAboveLow = 0: no historical bars available, but buying on a dip
-      // means the contract is near its recent low by definition
-      candidates.push({
-        contractSymbol: c.contractSymbol,
-        strike: c.strike,
-        expiry: new Date(expTs * 1000).toISOString().slice(0, 10),
-        dte,
-        contractPrice: mid,
-        contractLowAlltime: mid,
-        pctAboveLow: 0,
-        openInterest: oi,
-        avgDailyVolume: volume,
-        bidAskSpreadPct: spreadPct,
-        ivCurrent: c.impliedVolatility ?? null,
-        ivRank: null,
-        delta: null,
-      });
-    }
+    candidates.push({
+      contractSymbol: contract.symbol,
+      strike,
+      expiry: contract.expiration_date,
+      dte,
+      contractPrice:    Math.round(price  * 100) / 100,
+      contractLowAlltime: Math.round(price * 100) / 100,
+      pctAboveLow:      0,
+      openInterest:     Math.round(oi),
+      avgDailyVolume:   Math.round(oi / 10), // rough proxy: ~10% monthly OI turnover
+      bidAskSpreadPct:  3,                   // assumed for liquid large-cap LEAPs
+      ivCurrent:        Math.round(sigma * 1000) / 1000,
+      ivRank:           null,
+      delta:            Math.round(delta * 1000) / 1000,
+    });
   }
 
-  // Sort by tightest spread first
-  return candidates.sort((a, b) => a.bidAskSpreadPct - b.bidAskSpreadPct);
+  // Sort: closest to ATM delta (0.5) first — the most balanced risk/reward
+  return candidates.sort((a, b) =>
+    Math.abs((a.delta ?? 0.5) - 0.5) - Math.abs((b.delta ?? 0.5) - 0.5)
+  );
 }

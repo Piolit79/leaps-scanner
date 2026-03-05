@@ -29,13 +29,21 @@ export async function getStockSnapshot(symbol: string): Promise<StockSnapshot> {
   return get(url);
 }
 
-// Options chain for a symbol — calls only, filtered by DTE range
-export async function getOptionsChain(symbol: string, minDte: number, maxDte: number): Promise<OptionContract[]> {
+// Options chain for a symbol — calls only, filtered by DTE range and optional strike bounds
+export async function getOptionsChain(
+  symbol: string,
+  minDte: number,
+  maxDte: number,
+  strikeLow?: number,
+  strikeHigh?: number,
+): Promise<OptionContract[]> {
   const today = new Date();
   const minExp = new Date(today.getTime() + minDte * 86400000).toISOString().slice(0, 10);
   const maxExp = new Date(today.getTime() + maxDte * 86400000).toISOString().slice(0, 10);
 
-  const url = `${PAPER}/v2/options/contracts?underlying_symbols=${symbol}&type=call&expiration_date_gte=${minExp}&expiration_date_lte=${maxExp}&status=active&limit=200`;
+  let url = `${PAPER}/v2/options/contracts?underlying_symbols=${symbol}&type=call&expiration_date_gte=${minExp}&expiration_date_lte=${maxExp}&status=active&limit=200`;
+  if (strikeLow)  url += `&strike_price_gte=${strikeLow.toFixed(2)}`;
+  if (strikeHigh) url += `&strike_price_lte=${strikeHigh.toFixed(2)}`;
   const data = await get(url);
   return (data.option_contracts || []) as OptionContract[];
 }
