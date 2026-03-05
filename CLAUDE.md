@@ -35,9 +35,13 @@ Market cap ranges, Days-to-expiration (DTE), Delta approximation, Dip severity, 
 - Trigger badges: EPS Gap, 1-Day, 52w Hi, 30-Day
 - Priority alerts (triangle icon) and manual review flags (eye icon)
 
-## Last Session — 2026-03-05
-- Session was accidentally closed before we could document what was being worked on
-- **Pick up**: Ask user what specific feature/bug we were working on
+## Session Log
+
+### 2026-03-05
+- Previous session was accidentally closed — lost context of what was being worked on
+- Reviewed full project structure via GitHub
+- Set up CLAUDE.md for session memory across all three projects
+- **Next**: Ask user what we were working on when session closed
 
 ## Notes
 - Results auto-refresh every 60 seconds via React Query
