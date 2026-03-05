@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 
 export interface FilterState {
   marketCap: 'any' | '50-100' | '100-200' | '200+';
-  dte: 'any' | '12-18' | '18-24' | '24-30';
+  dte: 'any' | '9-12' | '12-18' | '18-24' | '24-30';
   delta: 'any' | 'deep-itm' | 'near-atm' | 'slightly-otm';
   dipType: 'any' | 'earnings_only' | 'any_single_day';
   dipSeverity: 'any' | '15-20' | '20-30' | '30+';
@@ -86,7 +86,8 @@ export default function FilterPanel({ filters, onChange, onReset }: Props) {
           { value: '200+', label: '$200B+ Mega' },
         ]} />
         <Sel label="DTE" value={filters.dte} onChange={set('dte')} options={[
-          { value: 'any', label: 'Any LEAP (12–30m)' },
+          { value: 'any', label: 'Any (9–30 months)' },
+          { value: '9-12',  label: '9 – 12 months' },
           { value: '12-18', label: '12 – 18 months' },
           { value: '18-24', label: '18 – 24 months' },
           { value: '24-30', label: '24 – 30 months' },

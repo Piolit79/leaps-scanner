@@ -25,7 +25,8 @@ async function triggerScan(config: object) {
 
 function buildScanConfig(f: FilterState) {
   const dteMap: Record<string, { minDte: number; maxDte: number }> = {
-    'any':   { minDte: 365, maxDte: 900 },
+    'any':   { minDte: 274, maxDte: 900 },
+    '9-12':  { minDte: 274, maxDte: 364 },
     '12-18': { minDte: 365, maxDte: 548 },
     '18-24': { minDte: 548, maxDte: 730 },
     '24-30': { minDte: 730, maxDte: 900 },
@@ -48,6 +49,7 @@ function applyDisplayFilters(results: any[], f: FilterState): any[] {
     if (f.marketCap === '200+'    && r.market_cap_b < 200) return false;
 
     // DTE
+    if (f.dte === '9-12'  && !(r.dte >= 274 && r.dte < 365)) return false;
     if (f.dte === '12-18' && !(r.dte >= 365 && r.dte < 548)) return false;
     if (f.dte === '18-24' && !(r.dte >= 548 && r.dte < 730)) return false;
     if (f.dte === '24-30' && !(r.dte >= 730))                 return false;
