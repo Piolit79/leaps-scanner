@@ -1,4 +1,5 @@
-import { AlertTriangle, Eye } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, Eye, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn, fmt, pct } from '../lib/utils';
 
 interface Result {
@@ -60,12 +61,34 @@ function IvCell({ iv }: { iv: number | null }) {
   return <span className={color}>{fmt(pctVal, 0)}%</span>;
 }
 
+type SortKey = keyof Result;
+type SortDir = 'asc' | 'desc';
+
+function sortResults(results: Result[], key: SortKey, dir: SortDir): Result[] {
+  return [...results].sort((a, b) => {
+    const av = a[key] ?? (typeof a[key] === 'number' ? -Infinity : '');
+    const bv = b[key] ?? (typeof b[key] === 'number' ? -Infinity : '');
+    if (av < bv) return dir === 'asc' ? -1 : 1;
+    if (av > bv) return dir === 'asc' ?  1 : -1;
+    return 0;
+  });
+}
+
 interface Props {
   results: Result[];
   totalCount: number;
 }
 
 export default function ResultsTable({ results, totalCount }: Props) {
+  const [sortKey, setSortKey] = useState<SortKey>('score');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  function handleSort(key: SortKey) {
+    if (key === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('desc'); }
+  }
+
+  const sorted = sortResults(results, sortKey, sortDir);
   if (totalCount === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -86,20 +109,37 @@ export default function ResultsTable({ results, totalCount }: Props) {
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr className="border-b border-border text-muted-foreground text-left">
-            <th className="py-2 pr-4">Ticker</th>
-            <th className="py-2 pr-4">Triggers</th>
-            <th className="py-2 pr-4">1-Day Drop</th>
-            <th className="py-2 pr-4">From High</th>
-            <th className="py-2 pr-4">Dip Date</th>
-            <th className="py-2 pr-4">Contract</th>
-            <th className="py-2 pr-4">Price</th>
-            <th className="py-2 pr-4">IV</th>
-            <th className="py-2 pr-4">OI</th>
-            <th className="py-2 pr-4">Score</th>
+            {([
+              ['ticker',          'Ticker'],
+              ['trigger_high_drop','Triggers'],
+              ['drop_1day_pct',   '1-Day Drop'],
+              ['drop_from_high_pct','From High'],
+              ['dip_date',        'Dip Date'],
+              ['strike',          'Contract'],
+              ['contract_price',  'Price'],
+              ['iv_current',      'IV'],
+              ['open_interest',   'OI'],
+              ['score',           'Score'],
+            ] as [SortKey, string][]).map(([key, label]) => (
+              <th
+                key={key}
+                className="py-2 pr-4 cursor-pointer select-none whitespace-nowrap hover:text-foreground transition-colors"
+                onClick={() => handleSort(key)}
+              >
+                <span className="inline-flex items-center gap-0.5">
+                  {label}
+                  {sortKey === key
+                    ? sortDir === 'asc'
+                      ? <ChevronUp size={11} className="text-primary" />
+                      : <ChevronDown size={11} className="text-primary" />
+                    : <ChevronDown size={11} className="opacity-20" />}
+                </span>
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {results.map(r => (
+          {sorted.map(r => (
             <tr
               key={r.id}
               className={cn(
