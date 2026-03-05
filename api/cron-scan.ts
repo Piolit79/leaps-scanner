@@ -1,11 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { runScan, DEFAULT_CONFIG } from '../lib/scanner/index';
+import { runScan, DEFAULT_CONFIG } from './lib/scanner/index';
 
 export const maxDuration = 300;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Verify this is coming from Vercel Cron
   const secret = req.headers['authorization'];
   if (secret !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
