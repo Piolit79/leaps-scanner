@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { runScan, DEFAULT_CONFIG } from './lib/scanner/index';
+import { runScan, DEFAULT_CONFIG } from './lib/scanner/index.js';
 
 export const maxDuration = 300;
 
@@ -14,12 +14,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let run: any = null;
   try {
-    const { data, error } = await db
-      .from('scan_runs')
-      .insert({ status: 'running' })
-      .select()
-      .single();
-    if (error) return res.status(500).json({ error: `Supabase insert failed: ${error.message}` });
+    const { data, error } = await db.from('scan_runs').insert({ status: 'running' }).select().single();
+    if (error) return res.status(500).json({ error: `DB insert failed: ${error.message}` });
     run = data;
   } catch (e: any) {
     return res.status(500).json({ error: `DB connection failed: ${e.message}` });
@@ -32,7 +28,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ runId: run.id, ...result });
   } catch (e: any) {
     const msg = e?.message ?? String(e);
-    console.error('runScan threw:', msg);
     await db.from('scan_runs').update({ status: 'error', error: msg }).eq('id', run.id).catch(() => {});
     return res.status(500).json({ error: msg });
   }

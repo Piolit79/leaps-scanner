@@ -1,9 +1,9 @@
-import { getStockBars } from '../alpaca';
-import { getProfile, getLargeCapUniverse, FALLBACK_LARGE_CAPS } from '../fmp';
-import { getEarningsCalendar } from '../earnings';
-import { analyzeDips, type ScanConfig } from './dips';
-import { findLeapCandidates, type OptionsConfig } from './options';
-import { scoreResult } from './scoring';
+import { getStockBars } from '../alpaca.js';
+import { getProfile, getLargeCapUniverse, FALLBACK_LARGE_CAPS } from '../fmp.js';
+import { getEarningsCalendar } from '../earnings.js';
+import { analyzeDips, type ScanConfig } from './dips.js';
+import { findLeapCandidates, type OptionsConfig } from './options.js';
+import { scoreResult } from './scoring.js';
 import { createClient } from '@supabase/supabase-js';
 
 function supabase() {

@@ -1,4 +1,4 @@
-import type { Bar } from '../alpaca';
+import type { Bar } from '../alpaca.js';
 
 export interface ScanConfig {
   earningsGapPct: number;       // default 10

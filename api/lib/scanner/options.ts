@@ -1,4 +1,4 @@
-import { getOptionsChain, getOptionSnapshots, getOptionBars, type OptionContract, type OptionSnapshot } from '../alpaca';
+import { getOptionsChain, getOptionSnapshots, getOptionBars, type OptionContract, type OptionSnapshot } from '../alpaca.js';
 
 export interface LeapCandidate {
   contractSymbol: string;

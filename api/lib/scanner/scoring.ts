@@ -1,5 +1,5 @@
-import type { DipResult } from './dips';
-import type { LeapCandidate } from './options';
+import type { DipResult } from './dips.js';
+import type { LeapCandidate } from './options.js';
 
 export interface ScoreBreakdown {
   earningsGap: number;       // +3
