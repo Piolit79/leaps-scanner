@@ -13,8 +13,9 @@ async function fetchResults() {
 
 async function triggerScan() {
   const r = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-  if (!r.ok) throw new Error('Scan failed');
-  return r.json();
+  const data = await r.json().catch(() => ({ error: `HTTP ${r.status} — empty response` }));
+  if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+  return data;
 }
 
 function Scanner() {
