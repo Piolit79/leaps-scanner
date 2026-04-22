@@ -8,6 +8,7 @@
   "functions": {
     "api/scan.ts": { "maxDuration": 300 },
     "api/cron-scan.ts": { "maxDuration": 300 },
-    "api/sma-scan.ts": { "maxDuration": 300 }
+    "api/sma-scan.ts": { "maxDuration": 300 },
+    "api/event-scan.ts": { "maxDuration": 300 }
   }
 }
