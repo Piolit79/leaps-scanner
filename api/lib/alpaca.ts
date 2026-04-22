@@ -51,9 +51,9 @@ export async function getOptionsChain(
 // Current snapshot for a specific option contract (price, greeks, IV, OI)
 export async function getOptionSnapshot(contractSymbol: string): Promise<OptionSnapshot | null> {
   try {
-    const url = `${BASE}/v2/options/snapshots/${contractSymbol}`;
+    const url = `${BASE}/v1beta1/options/snapshots?symbols=${contractSymbol}&feed=indicative`;
     const data = await get(url);
-    return data[contractSymbol] ?? null;
+    return data.snapshots?.[contractSymbol] ?? null;
   } catch {
     return null;
   }
@@ -77,7 +77,7 @@ export async function getOptionSnapshots(symbols: string[]): Promise<Record<stri
   for (let i = 0; i < symbols.length; i += 50) chunks.push(symbols.slice(i, i + 50));
   const results: Record<string, OptionSnapshot> = {};
   for (const chunk of chunks) {
-    const url = `${BASE}/v2/options/snapshots?symbols=${chunk.join(',')}&feed=indicative`;
+    const url = `${BASE}/v1beta1/options/snapshots?symbols=${chunk.join(',')}&feed=indicative`;
     try {
       const data = await get(url);
       Object.assign(results, data.snapshots ?? data);

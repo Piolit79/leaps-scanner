@@ -171,7 +171,7 @@ function Scanner() {
           </div>
         )}
 
-        {results.map(r => <EventRow key={r.id} result={r} />)}
+        {results.map(r => <EventRow key={r.id} result={r} filters={filters} />)}
       </main>
     </div>
   );

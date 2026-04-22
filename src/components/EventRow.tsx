@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, Loader2, TrendingDown } from 'lucide-react';
 import { cn, fmt } from '../lib/utils';
 import EventChart from './EventChart';
+import type { FilterState } from './ScanFilters';
 
 interface EventSignal {
   date: string;
@@ -190,10 +191,26 @@ function OptionsSection({ ticker }: { ticker: string }) {
   );
 }
 
-export default function EventRow({ result }: { result: EventResult }) {
+function filterSignal(s: EventSignal, f: FilterState): boolean {
+  if (f.signalType === 'gap_volume' && s.type !== 'gap_volume') return false;
+  if (f.signalType === 'high_drop'  && s.type !== 'high_drop')  return false;
+  const gapPct      = parseFloat(f.gapPct);
+  const volRatio    = parseFloat(f.volRatio);
+  const highDropPct = parseFloat(f.highDropPct);
+  if (s.type === 'gap_volume') {
+    const drop = Math.min(s.closePct, s.gapPct);
+    return drop <= -gapPct && s.volumeRatio >= volRatio;
+  }
+  if (s.type === 'high_drop') {
+    return s.dropFromHighPct <= -highDropPct;
+  }
+  return true;
+}
+
+export default function EventRow({ result, filters }: { result: EventResult; filters: FilterState }) {
   const [expanded, setExpanded] = useState(false);
 
-  const signals = result.recent_signals ?? [];
+  const signals = (result.recent_signals ?? []).filter(s => filterSignal(s, filters));
   const latest  = signals[signals.length - 1];
   const daysSince = latest
     ? Math.floor((Date.now() - new Date(latest.date).getTime()) / 86400000)
@@ -267,8 +284,8 @@ export default function EventRow({ result }: { result: EventResult }) {
             eventDates={signals.map(s => s.date)}
           />
 
-          {/* Historical signals */}
-          <HistoryTable signals={result.historical_signals ?? []} />
+          {/* Historical signals — filtered to match current thresholds */}
+          <HistoryTable signals={(result.historical_signals ?? []).filter(s => filterSignal(s, filters))} />
 
           {/* Options */}
           <div>
