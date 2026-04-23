@@ -60,7 +60,9 @@ interface Trade {
   day1Date: string;
   day0Close: number;
   day1Open: number;
+  day1Close: number;
   gapPct: number;
+  totalDrop2d: number;
   day0Rsi: number;
   day0RelVol: number;
   day0Drop: number;
@@ -138,8 +140,8 @@ function HitDot({ hit, label }: { hit: boolean; label: string }) {
 // ── sort ──────────────────────────────────────────────────────────────────────
 
 type SortKey = keyof Pick<Trade,
-  'ticker' | 'day0Date' | 'day1Date' | 'day1Open' | 'gapPct' | 'day0Rsi' |
-  'day0RelVol' | 'day0Drop' | 'return5d' | 'return10d' | 'return20d' | 'maxDrawdown20d'
+  'ticker' | 'day0Date' | 'day1Date' | 'day1Open' | 'gapPct' | 'totalDrop2d' |
+  'day0Rsi' | 'day0RelVol' | 'day0Drop' | 'return5d' | 'return10d' | 'return20d' | 'maxDrawdown20d'
 >;
 
 function sortTrades(trades: Trade[], key: SortKey, dir: 'asc' | 'desc'): Trade[] {
@@ -310,8 +312,9 @@ const COLUMNS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: 'day0Date',      label: 'Day 0' },
   { key: 'day1Date',      label: 'Day 1' },
   { key: 'day1Open',      label: 'Entry',    right: true },
-  { key: 'gapPct',        label: 'Gap %',    right: true },
-  { key: 'day0Rsi',       label: 'RSI',      right: true },
+  { key: 'gapPct',        label: 'Gap %',      right: true },
+  { key: 'totalDrop2d',   label: '2d Drop %',  right: true },
+  { key: 'day0Rsi',       label: 'RSI',        right: true },
   { key: 'day0RelVol',    label: 'RelVol',   right: true },
   { key: 'day0Drop',      label: 'Day0 Drop', right: true },
   { key: 'return5d',      label: '5d',       right: true },
@@ -378,6 +381,9 @@ function TradesTable({ trades }: { trades: Trade[] }) {
                 <td className="px-2 py-1.5 text-right font-mono">${fmt(t.day1Open, 2)}</td>
                 <td className="px-2 py-1.5 text-right font-mono text-muted-foreground">
                   {fmt(t.gapPct, 1)}%
+                </td>
+                <td className="px-2 py-1.5 text-right font-mono font-semibold text-red-400">
+                  {fmt(t.totalDrop2d, 1)}%
                 </td>
                 <td className="px-2 py-1.5 text-right font-mono">{fmt(t.day0Rsi, 1)}</td>
                 <td className="px-2 py-1.5 text-right font-mono text-muted-foreground">

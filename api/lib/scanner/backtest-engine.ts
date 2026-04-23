@@ -30,7 +30,9 @@ export interface BacktestTrade {
   day1Date: string;
   day0Close: number;
   day1Open: number;
+  day1Close: number;
   gapPct: number;
+  totalDrop2d: number;   // (Day1.close - Day0.close) / Day0.close * 100
   day0Rsi: number;
   day0RelVol: number;
   day0Drop: number;
@@ -178,13 +180,17 @@ export function runBacktest(
       if (sma20[j] > 0 && bars[j].c > sma20[j]) { reclaimDays = j - i; break; }
     }
 
+    const totalDrop2d = (next.c - bar.c) / bar.c * 100;
+
     trades.push({
       ticker,
       day0Date:      bar.t.slice(0, 10),
       day1Date:      next.t.slice(0, 10),
       day0Close:     +bar.c.toFixed(2),
       day1Open:      +entry.toFixed(2),
+      day1Close:     +next.c.toFixed(2),
       gapPct:        +gapPct.toFixed(2),
+      totalDrop2d:   +totalDrop2d.toFixed(2),
       day0Rsi:       +rsi.toFixed(1),
       day0RelVol:    +relVol[i].toFixed(2),
       day0Drop:      +dailyDrop.toFixed(2),
