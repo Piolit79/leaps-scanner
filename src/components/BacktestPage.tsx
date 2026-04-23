@@ -545,7 +545,7 @@ export default function BacktestPage() {
               {run.isPending ? 'Running backtest…' : 'Run Backtest'}
             </button>
             <p className="text-xs text-muted-foreground">
-              Scans 64 large-caps · ~4 years of data · 2–4 min
+              Scans 67 large-caps · ~4 years of data · 2–4 min
             </p>
           </div>
         </div>
@@ -578,7 +578,7 @@ export default function BacktestPage() {
           <div className="text-center py-20 text-muted-foreground">
             <p className="text-base">Configure parameters above and click Run Backtest.</p>
             <p className="text-sm mt-1">
-              Tests a gap-down entry strategy across 64 large-caps over ~4 years of daily data.
+              Tests a gap-down entry strategy across 67 large-caps over ~4 years of daily data.
             </p>
           </div>
         )}
