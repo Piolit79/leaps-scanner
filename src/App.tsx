@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Loader2, RefreshCw } from 'lucide-react';
+import { cn } from './lib/utils';
 import EventRow, { type EventResult } from './components/EventRow';
 import ScanFilters, { DEFAULT_FILTERS, type FilterState } from './components/ScanFilters';
+import BacktestPage from './components/BacktestPage';
 
 const queryClient = new QueryClient();
 
@@ -43,7 +45,7 @@ function applyFilters(results: EventResult[], f: FilterState): EventResult[] {
   });
 }
 
-function Scanner() {
+function ScannerPage() {
   const qc = useQueryClient();
   const [msg, setMsg]         = useState('');
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -63,7 +65,6 @@ function Scanner() {
     onError: (e: any) => setMsg(`Error: ${e.message}`),
   });
 
-  // Sort by biggest daily drop first
   const allResults: EventResult[] = (data?.results ?? []).sort((a: EventResult, b: EventResult) => {
     const aSig = a.recent_signals?.[0] as any;
     const bSig = b.recent_signals?.[0] as any;
@@ -73,11 +74,10 @@ function Scanner() {
   const results = applyFilters(allResults, filters);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
+    <>
+      <div className="border-b border-border px-6 py-3 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-primary tracking-tight">Pullback Scanner</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground">
             Large-cap uptrend pullbacks · RSI 30–45 · 9–12mo LEAPS · 64 stocks
           </p>
         </div>
@@ -91,7 +91,7 @@ function Scanner() {
             {scan.isPending ? 'Scanning…' : 'Run Scan'}
           </button>
         </div>
-      </header>
+      </div>
 
       {scan.isPending && (
         <div className="mx-6 mt-4 p-3 bg-muted rounded text-xs text-muted-foreground">
@@ -144,14 +144,49 @@ function Scanner() {
 
         {results.map(r => <EventRow key={r.id} result={r} />)}
       </main>
+    </>
+  );
+}
+
+type Tab = 'scanner' | 'backtest';
+
+function App() {
+  const [tab, setTab] = useState<Tab>('scanner');
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Top nav */}
+      <header className="border-b border-border px-6 py-0 flex items-center gap-0">
+        <div className="flex items-center gap-6 flex-1">
+          <h1 className="text-sm font-bold text-primary tracking-tight py-4 pr-6 border-r border-border">
+            LEAPS Scanner
+          </h1>
+          {(['scanner', 'backtest'] as Tab[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={cn(
+                'text-sm py-4 border-b-2 transition-colors capitalize',
+                tab === t
+                  ? 'border-primary text-foreground font-semibold'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t === 'scanner' ? 'Pullback Scanner' : 'Gap Dip Backtest'}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {tab === 'scanner' ? <ScannerPage /> : <BacktestPage />}
     </div>
   );
 }
 
-export default function App() {
+export default function Root() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Scanner />
+      <App />
     </QueryClientProvider>
   );
 }
