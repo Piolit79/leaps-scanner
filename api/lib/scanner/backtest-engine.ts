@@ -7,6 +7,7 @@ export interface BacktestConfig {
   minRelVol: number;
   gapMin: number;              // most-negative allowed gap, e.g. -4
   gapMax: number;              // least-negative allowed gap, e.g. -1
+  requireAboveSma200: boolean;
   requireAbove50sma: boolean;
   requireBelowPriorLow: boolean;
 }
@@ -18,6 +19,7 @@ export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
   minRelVol: 1.5,
   gapMin: -4,
   gapMax: -1,
+  requireAboveSma200: true,
   requireAbove50sma: false,
   requireBelowPriorLow: false,
 };
@@ -136,8 +138,8 @@ export function runBacktest(
     const next = bars[i + 1];
 
     // ── Day 0 checks ──
-    if (sma200[i] === 0 || bar.c <= sma200[i]) continue;
-    if (cfg.requireAbove50sma && (sma50[i] === 0 || bar.c <= sma50[i])) continue;
+    if (cfg.requireAboveSma200 && (sma200[i] === 0 || bar.c <= sma200[i])) continue;
+    if (cfg.requireAbove50sma  && (sma50[i]  === 0 || bar.c <= sma50[i]))  continue;
 
     const dailyDrop = (bar.c - prev.c) / prev.c * 100;
     if (dailyDrop > -cfg.minDailyDrop) continue;

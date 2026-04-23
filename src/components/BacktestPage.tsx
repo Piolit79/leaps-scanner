@@ -44,6 +44,7 @@ function cfgToApi(cfg: BacktestCfg): object {
     minRelVol:             parseFloat(cfg.minRelVol),
     gapMax:                gap.gapMax,
     gapMin:                gap.gapMin,
+    requireAboveSma200:    cfg.trend !== 'any',
     requireAbove50sma:     cfg.trend === 'sma50_200',
     requireBelowPriorLow:  cfg.belowPriorLow === 'yes',
   };
@@ -508,6 +509,7 @@ export default function BacktestPage() {
 
               <Field label="Trend Filter">
                 <select className={selectClass} value={cfg.trend} onChange={set('trend')}>
+                  <option value="any">None</option>
                   <option value="sma200">Close &gt; 200d SMA</option>
                   <option value="sma50_200">Close &gt; 50d &amp; 200d</option>
                 </select>
