@@ -17,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const cfg: BacktestConfig = { ...DEFAULT_BACKTEST_CONFIG, ...(req.body?.config ?? {}) };
 
   const allTrades: BacktestTrade[] = [];
-  const BATCH = 10;
+  const BATCH = 20;
 
   for (let i = 0; i < FALLBACK_LARGE_CAPS.length; i += BATCH) {
     const batch = FALLBACK_LARGE_CAPS.slice(i, i + BATCH);

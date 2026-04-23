@@ -9,7 +9,7 @@ export async function runPullbackScan(
 ): Promise<{ found: number }> {
   const scanDate = new Date().toISOString().slice(0, 10);
   let found = 0;
-  const BATCH = 10;
+  const BATCH = 20;
 
   for (let i = 0; i < FALLBACK_LARGE_CAPS.length; i += BATCH) {
     const batch = FALLBACK_LARGE_CAPS.slice(i, i + BATCH);

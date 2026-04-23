@@ -78,7 +78,7 @@ function ScannerPage() {
       <div className="border-b border-border px-6 py-3 flex items-center justify-between">
         <div>
           <p className="text-xs text-muted-foreground">
-            Large-cap uptrend pullbacks · RSI 30–45 · 9–12mo LEAPS · 67 stocks
+            Large-cap uptrend pullbacks · RSI 30–45 · 9–12mo LEAPS · ~200 large-caps
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -95,7 +95,7 @@ function ScannerPage() {
 
       {scan.isPending && (
         <div className="mx-6 mt-4 p-3 bg-muted rounded text-xs text-muted-foreground">
-          Fetching 2 years of bars for 67 large-caps and computing metrics — takes 2–4 min.
+          Fetching 2 years of bars for ~200 large-caps and computing metrics — takes 3–5 min.
         </div>
       )}
       {msg && !scan.isPending && (
@@ -131,7 +131,7 @@ function ScannerPage() {
           <div className="text-center py-20 text-muted-foreground">
             <p className="text-base">No scan results yet.</p>
             <p className="text-sm mt-1">
-              Click "Run Scan" to compute pullback metrics across 67 large-caps.
+              Click "Run Scan" to compute pullback metrics across ~200 large-caps.
             </p>
           </div>
         )}
