@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Loader2, RefreshCw, Zap } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import EventRow, { type EventResult } from './components/EventRow';
 import ScanFilters, { DEFAULT_FILTERS, type FilterState } from './components/ScanFilters';
 
@@ -12,48 +12,34 @@ async function fetchResults() {
   return r.json();
 }
 
-async function triggerScan(config: object) {
-  const r = await fetch('/api/event-scan', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ config }),
-  });
+async function triggerScan() {
+  const r = await fetch('/api/event-scan', { method: 'POST' });
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
   if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
   return data;
 }
 
-function buildConfig(f: FilterState) {
-  return {
-    gapPct:      parseFloat(f.gapPct),
-    volRatio:    parseFloat(f.volRatio),
-    highDropPct: parseFloat(f.highDropPct),
-    recentBars:  parseInt(f.recentBars),
-  };
-}
-
 function applyFilters(results: EventResult[], f: FilterState): EventResult[] {
-  const gapPct      = parseFloat(f.gapPct);
-  const volRatio    = parseFloat(f.volRatio);
-  const highDropPct = parseFloat(f.highDropPct);
+  const minCapB   = parseFloat(f.minCapB);
+  const minVolRaw = parseFloat(f.minVolM) * 1_000_000;
+  const rsiMin    = parseFloat(f.rsiMin);
+  const rsiMax    = parseFloat(f.rsiMax);
+  const minDrop   = parseFloat(f.minDrop);
+  const minRelVol = parseFloat(f.minRelVol);
 
   return results.filter(r => {
-    const sigs = r.recent_signals ?? [];
+    const sig = r.recent_signals?.[0] as any;
+    if (!sig || sig.type !== 'pullback') return false;
 
-    // At least one signal must satisfy the current filter settings
-    return sigs.some(s => {
-      if (f.signalType === 'gap_volume' && s.type !== 'gap_volume') return false;
-      if (f.signalType === 'high_drop'  && s.type !== 'high_drop')  return false;
+    if (r.market_cap_b < minCapB) return false;
+    if (sig.avgDailyVol30d < minVolRaw) return false;
+    if (f.aboveSma200 === 'yes' && sig.pctAboveSma200 < 0) return false;
+    if (sig.rsi14 < rsiMin || sig.rsi14 > rsiMax) return false;
+    if (sig.dailyChangePct > -minDrop) return false;
+    if (sig.relVolume < minRelVol) return false;
+    if (f.highRange === 'yes' && (sig.pctFrom52wHigh < -25 || sig.pctFrom52wHigh > -10)) return false;
 
-      if (s.type === 'gap_volume') {
-        const drop = Math.min(s.closePct, s.gapPct);
-        return drop <= -gapPct && s.volumeRatio >= volRatio;
-      }
-      if (s.type === 'high_drop') {
-        return s.dropFromHighPct <= -highDropPct;
-      }
-      return true;
-    });
+    return true;
   });
 }
 
@@ -69,43 +55,33 @@ function Scanner() {
   });
 
   const scan = useMutation({
-    mutationFn: () => triggerScan(buildConfig(filters)),
+    mutationFn: triggerScan,
     onSuccess: (d) => {
       qc.invalidateQueries({ queryKey: ['event-results'] });
-      setMsg(`Scan complete — ${d.found ?? 0} stocks with signals found.`);
+      setMsg(`Scan complete — ${d.found ?? 0} stocks computed.`);
     },
     onError: (e: any) => setMsg(`Error: ${e.message}`),
   });
 
+  // Sort by biggest daily drop first
   const allResults: EventResult[] = (data?.results ?? []).sort((a: EventResult, b: EventResult) => {
-    const aDate = a.recent_signals?.at(-1)?.date ?? '';
-    const bDate = b.recent_signals?.at(-1)?.date ?? '';
-    return bDate.localeCompare(aDate);
+    const aSig = a.recent_signals?.[0] as any;
+    const bSig = b.recent_signals?.[0] as any;
+    return (aSig?.dailyChangePct ?? 0) - (bSig?.dailyChangePct ?? 0);
   });
 
-  const results    = applyFilters(allResults, filters);
-  const freshCount = results.filter(r => {
-    const d = r.recent_signals?.at(-1)?.date ?? '';
-    const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    return d >= cutoff;
-  }).length;
+  const results = applyFilters(allResults, filters);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-primary tracking-tight">Event Scanner</h1>
+          <h1 className="text-xl font-bold text-primary tracking-tight">Pullback Scanner</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Post-event dip finder · Gap + volume triggers · 9–12mo options · 60 large-caps
+            Large-cap uptrend pullbacks · RSI 30–45 · 9–12mo LEAPS · 64 stocks
           </p>
         </div>
         <div className="flex items-center gap-4">
-          {freshCount > 0 && (
-            <div className="flex items-center gap-1.5 text-red-400 text-sm font-semibold">
-              <Zap size={13} />
-              {freshCount} fresh signal{freshCount !== 1 ? 's' : ''}
-            </div>
-          )}
           <button
             onClick={() => { setMsg(''); scan.mutate(); }}
             disabled={scan.isPending}
@@ -119,7 +95,7 @@ function Scanner() {
 
       {scan.isPending && (
         <div className="mx-6 mt-4 p-3 bg-muted rounded text-xs text-muted-foreground">
-          Fetching 2 years of bars for 60 large-caps and detecting events — takes 2–4 min.
+          Fetching 2 years of bars for 64 large-caps and computing metrics — takes 2–4 min.
         </div>
       )}
       {msg && !scan.isPending && (
@@ -138,13 +114,8 @@ function Scanner() {
             <span>
               <span className="text-foreground font-semibold">{results.length}</span>
               {results.length !== allResults.length && ` of ${allResults.length}`}
-              {' '}stocks with events in last {filters.recentBars} days
+              {' '}stocks match current filters
             </span>
-            {freshCount > 0 && (
-              <span className="text-red-400 font-semibold">
-                {freshCount} within past 7 days
-              </span>
-            )}
             {data?.scan_date && <span>Last scan: {data.scan_date}</span>}
           </div>
         )}
@@ -160,18 +131,18 @@ function Scanner() {
           <div className="text-center py-20 text-muted-foreground">
             <p className="text-base">No scan results yet.</p>
             <p className="text-sm mt-1">
-              Click "Run Scan" to detect gap + volume events across 60 large-caps.
+              Click "Run Scan" to compute pullback metrics across 64 large-caps.
             </p>
           </div>
         )}
 
         {!isLoading && !error && allResults.length > 0 && results.length === 0 && (
           <div className="text-center py-12 text-muted-foreground text-sm">
-            No results match the current filter settings — try loosening the thresholds.
+            No stocks match the current filter settings — try loosening the thresholds.
           </div>
         )}
 
-        {results.map(r => <EventRow key={r.id} result={r} filters={filters} />)}
+        {results.map(r => <EventRow key={r.id} result={r} />)}
       </main>
     </div>
   );

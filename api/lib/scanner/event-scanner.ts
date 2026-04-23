@@ -4,139 +4,98 @@ export interface OHLCV {
   t: string; o: number; h: number; l: number; c: number; v: number;
 }
 
-export interface EventSignal {
+export interface PullbackSignal {
   date: string;
-  type: 'gap_volume' | 'high_drop';
-  closePct: number;
-  gapPct: number;
-  volumeRatio: number;
-  dropFromHighPct: number;
-  priceOnEvent: number;
-  wasAboveSma20: boolean;
-  recovery20d: number | null;
-  recovery60d: number | null;
+  type: 'pullback';
+  dailyChangePct: number;
+  relVolume: number;
+  rsi14: number;
+  sma200: number;
+  pctAboveSma200: number;
+  pctFrom52wHigh: number;
+  avgDailyVol30d: number;
 }
 
-export interface EventScanResult {
+export interface PullbackScanResult {
   ticker: string;
   companyName: string;
   marketCapB: number;
   currentPrice: number;
-  recentSignals: EventSignal[];
-  historicalSignals: EventSignal[];
+  signal: PullbackSignal;
   ohlc: OHLCV[];
 }
 
-export interface EventConfig {
-  gapPct: number;       // min single-day drop % for gap_volume (default 5)
-  volRatio: number;     // min volume / 20d avg for gap_volume (default 1.3)
-  highDropPct: number;  // min drop from 20-day high for high_drop (default 8)
-  recentBars: number;   // "current" lookback in trading days (default 90)
+export interface PullbackConfig {
+  ohlcBars: number;
 }
 
-export const DEFAULT_CONFIG: EventConfig = {
-  gapPct: 5,
-  volRatio: 1.3,
-  highDropPct: 8,
-  recentBars: 90,
+export const DEFAULT_CONFIG: PullbackConfig = {
+  ohlcBars: 180,
 };
 
-const SMA_WIN = 20;
-const GAP_COOLDOWN      = 5;   // trading days to skip after a gap_volume trigger
-const HIGH_DROP_COOLDOWN = 15;  // longer cooldown for high_drop to avoid spam
+function computeRSI14(bars: Bar[], endIdx: number): number {
+  const period = 14;
+  if (endIdx < period) return 50;
 
-function rollingAvg(bars: Bar[], endIdx: number, window: number, fn: (b: Bar) => number): number {
-  const slice = bars.slice(Math.max(0, endIdx - window), endIdx);
-  if (!slice.length) return 0;
-  return slice.reduce((s, b) => s + fn(b), 0) / slice.length;
+  // Seed with first `period` changes
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const chg = bars[i].c - bars[i - 1].c;
+    if (chg >= 0) avgGain += chg; else avgLoss -= chg;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  // Wilder smooth through to endIdx
+  for (let i = period + 1; i <= endIdx; i++) {
+    const chg = bars[i].c - bars[i - 1].c;
+    avgGain = (avgGain * (period - 1) + (chg >= 0 ? chg : 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + (chg < 0 ? -chg : 0)) / period;
+  }
+
+  if (avgLoss === 0) return 100;
+  return +(100 - 100 / (1 + avgGain / avgLoss)).toFixed(1);
 }
 
-function rollingMax(bars: Bar[], endIdx: number, window: number, fn: (b: Bar) => number): number {
-  const slice = bars.slice(Math.max(0, endIdx - window), endIdx);
-  if (!slice.length) return 0;
-  return Math.max(...slice.map(fn));
-}
-
-export function detectEvents(
+export function detectPullback(
   bars: Bar[],
   ticker: string,
   companyName: string,
   marketCapB: number,
-  cfg: EventConfig = DEFAULT_CONFIG,
-): EventScanResult | null {
-  if (bars.length < SMA_WIN + 10) return null;
+  cfg: PullbackConfig = DEFAULT_CONFIG,
+): PullbackScanResult | null {
+  // Need 200 bars for SMA + buffer
+  if (bars.length < 210) return null;
 
   const lastIdx = bars.length - 1;
-  const currentPrice = bars[lastIdx].c;
-  const recentStart = Math.max(SMA_WIN, lastIdx - cfg.recentBars + 1);
+  const cur  = bars[lastIdx];
+  const prev = bars[lastIdx - 1];
 
-  const signals: EventSignal[] = [];
-  // Separate cooldowns per type so a high_drop doesn't block a gap_volume
-  let gapNextAllowed      = 0;
-  let highDropNextAllowed = 0;
+  const sma200 = bars.slice(lastIdx - 199, lastIdx + 1).reduce((s, b) => s + b.c, 0) / 200;
+  const high52w = Math.max(...bars.slice(Math.max(0, lastIdx - 251), lastIdx + 1).map(b => b.h));
 
-  for (let i = SMA_WIN; i <= lastIdx; i++) {
-    const bar  = bars[i];
-    const prev = bars[i - 1];
+  // Exclude today's bar from baseline volume averages
+  const vol20Bars = bars.slice(lastIdx - 20, lastIdx);
+  const avgVol20  = vol20Bars.reduce((s, b) => s + b.v, 0) / vol20Bars.length;
+  const vol30Bars = bars.slice(Math.max(0, lastIdx - 30), lastIdx);
+  const avgVol30  = vol30Bars.reduce((s, b) => s + b.v, 0) / vol30Bars.length;
 
-    const avgVol     = rollingAvg(bars, i, 20, b => b.v);
-    const sma20      = rollingAvg(bars, i, SMA_WIN, b => b.c);
-    const high20     = rollingMax(bars, i, 20, b => b.h);
+  const signal: PullbackSignal = {
+    date:             cur.t.slice(0, 10),
+    type:             'pullback',
+    dailyChangePct:   +((cur.c - prev.c) / prev.c * 100).toFixed(2),
+    relVolume:        avgVol20 > 0 ? +(cur.v / avgVol20).toFixed(2) : 0,
+    rsi14:            +computeRSI14(bars, lastIdx),
+    sma200:           +sma200.toFixed(2),
+    pctAboveSma200:   +((cur.c - sma200) / sma200 * 100).toFixed(2),
+    pctFrom52wHigh:   +((cur.c - high52w) / high52w * 100).toFixed(2),
+    avgDailyVol30d:   Math.round(avgVol30),
+  };
 
-    const closePct      = ((bar.c - prev.c) / prev.c) * 100;
-    const gapPct        = ((bar.o - prev.c) / prev.c) * 100;
-    const volRatio      = avgVol > 0 ? bar.v / avgVol : 0;
-    const dropFromHigh  = high20 > 0 ? ((bar.c - high20) / high20) * 100 : 0;
-    const wasAboveSma20 = prev.c > sma20;
-
-    const rec20 = i + 20 <= lastIdx ? ((bars[i + 20].c - bar.c) / bar.c) * 100 : null;
-    const rec60 = i + 60 <= lastIdx ? ((bars[i + 60].c - bar.c) / bar.c) * 100 : null;
-
-    const base: Omit<EventSignal, 'type'> = {
-      date: bar.t.slice(0, 10),
-      closePct:        +closePct.toFixed(2),
-      gapPct:          +gapPct.toFixed(2),
-      volumeRatio:     +volRatio.toFixed(2),
-      dropFromHighPct: +dropFromHigh.toFixed(2),
-      priceOnEvent:    bar.c,
-      wasAboveSma20,
-      recovery20d:     rec20 !== null ? +rec20.toFixed(2) : null,
-      recovery60d:     rec60 !== null ? +rec60.toFixed(2) : null,
-    };
-
-    // gap_volume: hard single-day drop with volume confirmation
-    if (i >= gapNextAllowed &&
-        (gapPct <= -cfg.gapPct || closePct <= -cfg.gapPct) &&
-        volRatio >= cfg.volRatio) {
-      signals.push({ ...base, type: 'gap_volume' });
-      gapNextAllowed = i + GAP_COOLDOWN;
-    }
-
-    // high_drop: close is N% below the 20-day rolling high.
-    // Uses its own cooldown — no "first crossing" check needed.
-    // This means a stock persistently in a dip will fire ~once per cooldown period.
-    if (i >= highDropNextAllowed && dropFromHigh <= -cfg.highDropPct) {
-      // Don't double-count if a gap_volume just fired on the same bar
-      if (!signals.length || signals[signals.length - 1].date !== base.date) {
-        signals.push({ ...base, type: 'high_drop' });
-      }
-      highDropNextAllowed = i + HIGH_DROP_COOLDOWN;
-    }
-  }
-
-  if (!signals.length) return null;
-
-  const recentCutoff    = bars[recentStart]?.t.slice(0, 10) ?? '';
-  const recentSignals   = signals.filter(s => s.date >= recentCutoff);
-  const historicalSignals = signals
-    .filter(s => s.date < recentCutoff)
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  if (!recentSignals.length) return null;
-
-  const ohlc: OHLCV[] = bars.slice(-cfg.recentBars).map(b => ({
+  const ohlc: OHLCV[] = bars.slice(Math.max(0, lastIdx - cfg.ohlcBars + 1)).map(b => ({
     t: b.t.slice(0, 10), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v,
   }));
 
-  return { ticker, companyName, marketCapB, currentPrice, recentSignals, historicalSignals, ohlc };
+  return { ticker, companyName, marketCapB, currentPrice: cur.c, signal, ohlc };
 }

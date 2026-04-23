@@ -1,19 +1,25 @@
 import { cn } from '../lib/utils';
 
 export interface FilterState {
-  gapPct: string;
-  volRatio: string;
-  highDropPct: string;
-  signalType: string;
-  recentBars: string;
+  minCapB:     string;
+  minVolM:     string;
+  aboveSma200: string;
+  rsiMin:      string;
+  rsiMax:      string;
+  minDrop:     string;
+  minRelVol:   string;
+  highRange:   string;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
-  gapPct:      '5',
-  volRatio:    '1.3',
-  highDropPct: '8',
-  signalType:  'any',
-  recentBars:  '90',
+  minCapB:     '10',
+  minVolM:     '1',
+  aboveSma200: 'yes',
+  rsiMin:      '30',
+  rsiMax:      '45',
+  minDrop:     '3',
+  minRelVol:   '1.5',
+  highRange:   'any',
 };
 
 const selectClass =
@@ -45,7 +51,7 @@ export default function ScanFilters({ filters, onChange, onReset }: Props) {
     <div className="bg-muted/20 border border-border rounded-lg px-4 py-3 mb-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Scan Settings
+          Scan Filters
         </span>
         {!isDefault && (
           <button
@@ -58,54 +64,74 @@ export default function ScanFilters({ filters, onChange, onReset }: Props) {
       </div>
 
       <div className="flex flex-wrap gap-4">
-        <Field label="Min Drop %">
-          <select className={selectClass} value={filters.gapPct} onChange={set('gapPct')}>
-            <option value="3">≥ 3%</option>
-            <option value="4">≥ 4%</option>
-            <option value="5">≥ 5%</option>
-            <option value="6">≥ 6%</option>
-            <option value="7">≥ 7%</option>
-            <option value="8">≥ 8%</option>
-            <option value="10">≥ 10%</option>
+        <Field label="Market Cap">
+          <select className={selectClass} value={filters.minCapB} onChange={set('minCapB')}>
+            <option value="5">≥ $5B</option>
+            <option value="10">≥ $10B</option>
+            <option value="25">≥ $25B</option>
+            <option value="50">≥ $50B</option>
           </select>
         </Field>
 
-        <Field label="Volume Spike">
-          <select className={selectClass} value={filters.volRatio} onChange={set('volRatio')}>
-            <option value="1.0">Any (≥ 1×)</option>
+        <Field label="Avg Daily Vol">
+          <select className={selectClass} value={filters.minVolM} onChange={set('minVolM')}>
+            <option value="0.5">≥ 500K</option>
+            <option value="1">≥ 1M</option>
+            <option value="2">≥ 2M</option>
+            <option value="5">≥ 5M</option>
+          </select>
+        </Field>
+
+        <Field label="Above 200d SMA">
+          <select className={selectClass} value={filters.aboveSma200} onChange={set('aboveSma200')}>
+            <option value="yes">Yes</option>
+            <option value="any">Any</option>
+          </select>
+        </Field>
+
+        <Field label="RSI Min">
+          <select className={selectClass} value={filters.rsiMin} onChange={set('rsiMin')}>
+            <option value="25">≥ 25</option>
+            <option value="28">≥ 28</option>
+            <option value="30">≥ 30</option>
+            <option value="32">≥ 32</option>
+            <option value="35">≥ 35</option>
+          </select>
+        </Field>
+
+        <Field label="RSI Max">
+          <select className={selectClass} value={filters.rsiMax} onChange={set('rsiMax')}>
+            <option value="40">≤ 40</option>
+            <option value="42">≤ 42</option>
+            <option value="45">≤ 45</option>
+            <option value="48">≤ 48</option>
+            <option value="50">≤ 50</option>
+          </select>
+        </Field>
+
+        <Field label="Daily Drop">
+          <select className={selectClass} value={filters.minDrop} onChange={set('minDrop')}>
+            <option value="2">≤ −2%</option>
+            <option value="3">≤ −3%</option>
+            <option value="4">≤ −4%</option>
+            <option value="5">≤ −5%</option>
+          </select>
+        </Field>
+
+        <Field label="Rel Volume">
+          <select className={selectClass} value={filters.minRelVol} onChange={set('minRelVol')}>
+            <option value="1.0">≥ 1.0×</option>
             <option value="1.2">≥ 1.2×</option>
-            <option value="1.3">≥ 1.3×</option>
             <option value="1.5">≥ 1.5×</option>
             <option value="2.0">≥ 2.0×</option>
+            <option value="2.5">≥ 2.5×</option>
           </select>
         </Field>
 
-        <Field label="Drop from 20d High">
-          <select className={selectClass} value={filters.highDropPct} onChange={set('highDropPct')}>
-            <option value="5">≥ 5%</option>
-            <option value="6">≥ 6%</option>
-            <option value="7">≥ 7%</option>
-            <option value="8">≥ 8%</option>
-            <option value="10">≥ 10%</option>
-            <option value="12">≥ 12%</option>
-            <option value="15">≥ 15%</option>
-          </select>
-        </Field>
-
-        <Field label="Signal Type">
-          <select className={selectClass} value={filters.signalType} onChange={set('signalType')}>
+        <Field label="52w High Range">
+          <select className={selectClass} value={filters.highRange} onChange={set('highRange')}>
             <option value="any">Any</option>
-            <option value="gap_volume">Gap + Volume only</option>
-            <option value="high_drop">High-Drop only</option>
-          </select>
-        </Field>
-
-        <Field label="Lookback">
-          <select className={selectClass} value={filters.recentBars} onChange={set('recentBars')}>
-            <option value="30">30 days</option>
-            <option value="60">60 days</option>
-            <option value="90">90 days</option>
-            <option value="120">120 days</option>
+            <option value="yes">−10% to −25%</option>
           </select>
         </Field>
       </div>
@@ -115,8 +141,8 @@ export default function ScanFilters({ filters, onChange, onReset }: Props) {
         isDefault ? 'text-muted-foreground/60' : 'text-yellow-500',
       )}>
         {isDefault
-          ? 'Settings apply to the next scan and filter displayed results.'
-          : '⚠ Settings changed — click Run Scan to re-scan with new thresholds, or results below are filtered from the last scan.'}
+          ? 'Filters apply instantly to the last scan. Run Scan to refresh market data.'
+          : '⚠ Filters changed — results below reflect the last scan with new thresholds applied.'}
       </p>
     </div>
   );

@@ -1,21 +1,19 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, Loader2, TrendingDown } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { cn, fmt } from '../lib/utils';
 import EventChart from './EventChart';
-import type { FilterState } from './ScanFilters';
 
-interface EventSignal {
+interface PullbackSignal {
   date: string;
-  type: 'gap_volume' | 'high_drop';
-  closePct: number;
-  gapPct: number;
-  volumeRatio: number;
-  dropFromHighPct: number;
-  priceOnEvent: number;
-  wasAboveSma20: boolean;
-  recovery20d: number | null;
-  recovery60d: number | null;
+  type: 'pullback';
+  dailyChangePct: number;
+  relVolume: number;
+  rsi14: number;
+  sma200: number;
+  pctAboveSma200: number;
+  pctFrom52wHigh: number;
+  avgDailyVol30d: number;
 }
 
 interface OHLCV { t: string; o: number; h: number; l: number; c: number; v: number; }
@@ -26,29 +24,19 @@ export interface EventResult {
   company_name: string;
   market_cap_b: number;
   current_price: number;
-  recent_signals: EventSignal[];
-  historical_signals: EventSignal[];
+  recent_signals: PullbackSignal[];
+  historical_signals: any[];
   ohlc_json: OHLCV[];
 }
 
-function SignalBadge({ type }: { type: EventSignal['type'] }) {
+function RsiBadge({ rsi }: { rsi: number }) {
+  const color =
+    rsi < 33 ? 'bg-red-950 text-red-300 border-red-800' :
+    rsi < 40 ? 'bg-orange-950 text-orange-300 border-orange-800' :
+               'bg-yellow-950 text-yellow-300 border-yellow-800';
   return (
-    <span className={cn(
-      'text-xs font-semibold px-1.5 py-0.5 rounded',
-      type === 'gap_volume'
-        ? 'bg-red-950 text-red-300 border border-red-800'
-        : 'bg-orange-950 text-orange-300 border border-orange-800',
-    )}>
-      {type === 'gap_volume' ? 'GAP+VOL' : 'HIGH-DROP'}
-    </span>
-  );
-}
-
-function RecoveryCell({ v }: { v: number | null }) {
-  if (v === null) return <span className="text-muted-foreground">—</span>;
-  return (
-    <span className={cn('font-mono text-xs', v >= 0 ? 'text-green-400' : 'text-red-400')}>
-      {v >= 0 ? '+' : ''}{fmt(v, 1)}%
+    <span className={cn('text-xs font-semibold px-1.5 py-0.5 rounded border', color)}>
+      RSI {fmt(rsi, 1)}
     </span>
   );
 }
@@ -58,54 +46,6 @@ function IvCell({ iv }: { iv: number | null }) {
   const pct = iv * 100;
   const color = pct < 25 ? 'text-green-400' : pct < 40 ? 'text-yellow-400' : 'text-red-400';
   return <span className={cn('font-mono text-xs', color)}>{fmt(pct, 0)}%</span>;
-}
-
-function HistoryTable({ signals }: { signals: EventSignal[] }) {
-  if (!signals.length) return null;
-  return (
-    <div className="mt-4">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-        Historical signals — past examples ({signals.length})
-      </p>
-      <div className="overflow-x-auto rounded border border-border">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-border text-muted-foreground bg-muted/20">
-              <th className="px-3 py-1.5 text-left">Date</th>
-              <th className="px-3 py-1.5 text-left">Type</th>
-              <th className="px-3 py-1.5 text-right">Close Δ</th>
-              <th className="px-3 py-1.5 text-right">Vol Ratio</th>
-              <th className="px-3 py-1.5 text-right">Price</th>
-              <th className="px-3 py-1.5 text-right">+20d</th>
-              <th className="px-3 py-1.5 text-right">+60d</th>
-              <th className="px-3 py-1.5 text-center">Qual.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {signals.map((s, i) => (
-              <tr key={i} className="border-b border-border last:border-0">
-                <td className="px-3 py-1.5 text-muted-foreground">{s.date}</td>
-                <td className="px-3 py-1.5"><SignalBadge type={s.type} /></td>
-                <td className="px-3 py-1.5 text-right text-red-400 font-mono">{fmt(s.closePct, 1)}%</td>
-                <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">{fmt(s.volumeRatio, 1)}×</td>
-                <td className="px-3 py-1.5 text-right font-mono">${fmt(s.priceOnEvent, 2)}</td>
-                <td className="px-3 py-1.5 text-right"><RecoveryCell v={s.recovery20d} /></td>
-                <td className="px-3 py-1.5 text-right"><RecoveryCell v={s.recovery60d} /></td>
-                <td className="px-3 py-1.5 text-center text-xs">
-                  {s.wasAboveSma20
-                    ? <span className="text-green-500">✓</span>
-                    : <span className="text-muted-foreground">—</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs text-muted-foreground mt-1.5">
-        Qual. = stock was above 20 SMA before event · +20d/+60d = price recovery after trigger
-      </p>
-    </div>
-  );
 }
 
 interface Contract {
@@ -184,56 +124,39 @@ function OptionsSection({ ticker }: { ticker: string }) {
         </tbody>
       </table>
       <p className="px-3 py-2 text-xs text-muted-foreground">
-        Sorted by IV ascending (lowest IV = cheapest relative to expected move)
-        · Green IV &lt;25% · Yellow 25–40% · Red &gt;40%
+        Sorted by IV ascending · Green &lt;25% · Yellow 25–40% · Red &gt;40%
       </p>
     </div>
   );
 }
 
-function filterSignal(s: EventSignal, f: FilterState): boolean {
-  if (f.signalType === 'gap_volume' && s.type !== 'gap_volume') return false;
-  if (f.signalType === 'high_drop'  && s.type !== 'high_drop')  return false;
-  const gapPct      = parseFloat(f.gapPct);
-  const volRatio    = parseFloat(f.volRatio);
-  const highDropPct = parseFloat(f.highDropPct);
-  if (s.type === 'gap_volume') {
-    const drop = Math.min(s.closePct, s.gapPct);
-    return drop <= -gapPct && s.volumeRatio >= volRatio;
-  }
-  if (s.type === 'high_drop') {
-    return s.dropFromHighPct <= -highDropPct;
-  }
-  return true;
+function MetricRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-xs text-muted-foreground uppercase tracking-wider">{label}</span>
+      <span className="font-mono text-sm font-semibold">{value}</span>
+      {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+    </div>
+  );
 }
 
-export default function EventRow({ result, filters }: { result: EventResult; filters: FilterState }) {
+export default function EventRow({ result }: { result: EventResult }) {
   const [expanded, setExpanded] = useState(false);
+  const sig = result.recent_signals?.[0];
 
-  const signals = (result.recent_signals ?? []).filter(s => filterSignal(s, filters));
-  const latest  = signals[signals.length - 1];
-  const daysSince = latest
-    ? Math.floor((Date.now() - new Date(latest.date).getTime()) / 86400000)
-    : null;
+  if (!sig) return null;
 
-  // Biggest single-day drop across all recent signals
-  const maxDrop = signals.reduce((best, s) => Math.min(best, s.closePct, s.gapPct), 0);
-
-  const isFresh = daysSince !== null && daysSince <= 7;
+  const volM = (sig.avgDailyVol30d / 1_000_000).toFixed(1);
+  const dropColor = sig.dailyChangePct <= -5 ? 'text-red-400' :
+                    sig.dailyChangePct <= -3 ? 'text-orange-400' : 'text-yellow-400';
 
   return (
-    <div className={cn(
-      'border border-border rounded-lg mb-2 transition-colors',
-      isFresh && 'border-red-900/60',
-    )}>
+    <div className="border border-border rounded-lg mb-2 transition-colors">
       {/* Summary row */}
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 rounded-lg"
         onClick={() => setExpanded(x => !x)}
       >
-        {/* Fresh indicator */}
-        {isFresh && <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />}
-
         {/* Ticker */}
         <div className="w-16 flex-shrink-0">
           <span className="font-bold text-sm">{result.ticker}</span>
@@ -244,33 +167,26 @@ export default function EventRow({ result, filters }: { result: EventResult; fil
           <span className="text-xs text-muted-foreground truncate">{result.company_name}</span>
         </div>
 
-        {/* Current price */}
+        {/* Price */}
         <div className="font-mono text-sm w-20 text-right flex-shrink-0">
           ${fmt(result.current_price, 2)}
         </div>
 
-        {/* Event summary */}
-        {latest && (
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <TrendingDown size={13} className="text-red-400" />
-            <span className="font-mono text-sm font-semibold text-red-400">
-              {fmt(maxDrop, 1)}%
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {daysSince === 0 ? 'today' : daysSince === 1 ? '1d ago' : `${daysSince}d ago`}
-            </span>
-            <SignalBadge type={latest.type} />
-          </div>
-        )}
+        {/* Key metrics */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <span className={cn('font-mono text-sm font-semibold', dropColor)}>
+            {fmt(sig.dailyChangePct, 1)}%
+          </span>
+          <RsiBadge rsi={sig.rsi14} />
+          <span className="text-xs text-muted-foreground font-mono">
+            {fmt(sig.relVolume, 1)}× vol
+          </span>
+          <span className="text-xs text-muted-foreground font-mono">
+            {fmt(sig.pctFrom52wHigh, 1)}% hi
+          </span>
+        </div>
 
-        {/* Signal counts */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-shrink-0">
-          {signals.length > 1 && <span>{signals.length} signals</span>}
-          {result.historical_signals?.length > 0 && (
-            <span className="text-muted-foreground/60">
-              {result.historical_signals.length} hist.
-            </span>
-          )}
+        <div className="flex items-center flex-shrink-0">
           {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </div>
       </div>
@@ -278,14 +194,45 @@ export default function EventRow({ result, filters }: { result: EventResult; fil
       {/* Expanded detail */}
       {expanded && (
         <div className="border-t border-border px-4 pb-4 pt-3 space-y-4">
+          {/* Metrics grid */}
+          <div className="grid grid-cols-4 gap-4 bg-muted/10 rounded p-3 border border-border">
+            <MetricRow
+              label="Daily Chg"
+              value={`${fmt(sig.dailyChangePct, 2)}%`}
+            />
+            <MetricRow
+              label="RSI(14)"
+              value={fmt(sig.rsi14, 1)}
+            />
+            <MetricRow
+              label="Rel Volume"
+              value={`${fmt(sig.relVolume, 2)}×`}
+              sub={`avg ${volM}M/day`}
+            />
+            <MetricRow
+              label="vs 200d SMA"
+              value={`${sig.pctAboveSma200 >= 0 ? '+' : ''}${fmt(sig.pctAboveSma200, 1)}%`}
+              sub={`SMA $${fmt(sig.sma200, 2)}`}
+            />
+            <MetricRow
+              label="vs 52w High"
+              value={`${fmt(sig.pctFrom52wHigh, 1)}%`}
+            />
+            <MetricRow
+              label="Market Cap"
+              value={`$${fmt(result.market_cap_b, 0)}B`}
+            />
+            <MetricRow
+              label="Scan Date"
+              value={sig.date}
+            />
+          </div>
+
           {/* Chart */}
           <EventChart
             ohlc={result.ohlc_json ?? []}
-            eventDates={signals.map(s => s.date)}
+            eventDates={[sig.date]}
           />
-
-          {/* Historical signals — filtered to match current thresholds */}
-          <HistoryTable signals={(result.historical_signals ?? []).filter(s => filterSignal(s, filters))} />
 
           {/* Options */}
           <div>
