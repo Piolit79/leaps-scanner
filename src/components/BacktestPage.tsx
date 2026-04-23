@@ -26,10 +26,13 @@ const DEFAULT_CFG: BacktestCfg = {
 };
 
 const GAP_RANGES: Record<string, { label: string; gapMax: number; gapMin: number }> = {
-  '1_3': { label: '−1% to −3%', gapMax: -1, gapMin: -3 },
-  '1_4': { label: '−1% to −4%', gapMax: -1, gapMin: -4 },
-  '1_5': { label: '−1% to −5%', gapMax: -1, gapMin: -5 },
-  '2_5': { label: '−2% to −5%', gapMax: -2, gapMin: -5 },
+  '1_3':    { label: '−1% to −3%',    gapMax: -1,  gapMin: -3   },
+  '1_4':    { label: '−1% to −4%',    gapMax: -1,  gapMin: -4   },
+  '1_5':    { label: '−1% to −5%',    gapMax: -1,  gapMin: -5   },
+  '2_5':    { label: '−2% to −5%',    gapMax: -2,  gapMin: -5   },
+  'gte3':   { label: '−3% or more',   gapMax: -3,  gapMin: -100 },
+  'gte5':   { label: '−5% or more',   gapMax: -5,  gapMin: -100 },
+  'gte10':  { label: '−10% or more',  gapMax: -10, gapMin: -100 },
 };
 
 function cfgToApi(cfg: BacktestCfg): object {
@@ -496,6 +499,7 @@ export default function BacktestPage() {
 
               <Field label="Rel Volume">
                 <select className={selectClass} value={cfg.minRelVol} onChange={set('minRelVol')}>
+                  <option value="1.2">≥ 1.2×</option>
                   <option value="1.5">≥ 1.5×</option>
                   <option value="2.0">≥ 2.0×</option>
                   <option value="2.5">≥ 2.5×</option>
