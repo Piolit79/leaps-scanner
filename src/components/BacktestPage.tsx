@@ -13,6 +13,7 @@ interface BacktestCfg {
   gapRange:         string;
   trend:            string;
   belowPriorLow:    string;
+  lookbackDays:     string;
 }
 
 const DEFAULT_CFG: BacktestCfg = {
@@ -23,6 +24,7 @@ const DEFAULT_CFG: BacktestCfg = {
   gapRange:      '1_4',
   trend:         'sma200',
   belowPriorLow: 'no',
+  lookbackDays:  'all',
 };
 
 const GAP_RANGES: Record<string, { label: string; gapMax: number; gapMin: number }> = {
@@ -413,10 +415,47 @@ function TradesTable({ trades }: { trades: Trade[] }) {
 
 // ── main page ─────────────────────────────────────────────────────────────────
 
+// Lightweight client-side metric recomputation for filtered trade subsets
+function recomputeMetrics(trades: Trade[]): Metrics | null {
+  if (!trades.length) return null;
+  const dates = trades.map(t => t.day0Date).sort();
+
+  function ps(returns: (number | null)[], periodDays: number): PeriodStats {
+    const valid = returns.filter((r): r is number => r !== null);
+    if (!valid.length) return { count: 0, winRate: 0, avg: 0, med: 0, sharpeRatio: 0 };
+    const wins = valid.filter(r => r > 0).length;
+    const sorted = [...valid].sort((a, b) => a - b);
+    const avg = valid.reduce((s, r) => s + r, 0) / valid.length;
+    const mid = Math.floor(sorted.length / 2);
+    const med = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    const variance = valid.reduce((s, r) => s + (r - avg) ** 2, 0) / Math.max(valid.length - 1, 1);
+    const sharpeRatio = variance === 0 ? 0 : +(avg / Math.sqrt(variance) * Math.sqrt(252 / periodDays)).toFixed(2);
+    return { count: valid.length, winRate: +(wins / valid.length * 100).toFixed(1), avg: +avg.toFixed(2), med: +med.toFixed(2), sharpeRatio };
+  }
+
+  const n = trades.length;
+  const withR20 = trades.filter(t => t.return20d !== null).sort((a, b) => (b.return20d as number) - (a.return20d as number));
+  return {
+    totalSignals: n,
+    dateRange: { from: dates[0], to: dates[dates.length - 1] },
+    d5:  ps(trades.map(t => t.return5d),  5),
+    d10: ps(trades.map(t => t.return10d), 10),
+    d20: ps(trades.map(t => t.return20d), 20),
+    avgMaxDrawdown: +(trades.reduce((s, t) => s + t.maxDrawdown20d, 0) / n).toFixed(2),
+    hitProfit5Rate:  +(trades.filter(t => t.hitProfit5).length  / n * 100).toFixed(1),
+    hitProfit10Rate: +(trades.filter(t => t.hitProfit10).length / n * 100).toFixed(1),
+    hitStop5Rate:    +(trades.filter(t => t.hitStop5).length    / n * 100).toFixed(1),
+    hitStop8Rate:    +(trades.filter(t => t.hitStop8).length    / n * 100).toFixed(1),
+    avgReclaimDays: null,
+    best:  withR20[0]                   ? { ticker: withR20[0].ticker,                   date: withR20[0].day0Date,                   return20d: withR20[0].return20d as number }                   : null,
+    worst: withR20[withR20.length - 1] ? { ticker: withR20[withR20.length - 1].ticker, date: withR20[withR20.length - 1].day0Date, return20d: withR20[withR20.length - 1].return20d as number } : null,
+  };
+}
+
 export default function BacktestPage() {
-  const [cfg, setCfg]     = useState<BacktestCfg>(DEFAULT_CFG);
-  const [trades, setTrades]   = useState<Trade[] | null>(null);
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [cfg, setCfg]         = useState<BacktestCfg>(DEFAULT_CFG);
+  const [allTrades, setAllTrades]   = useState<Trade[] | null>(null);
+  const [allMetrics, setAllMetrics] = useState<Metrics | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   const set = (key: keyof BacktestCfg) => (e: React.ChangeEvent<HTMLSelectElement>) =>
@@ -435,13 +474,20 @@ export default function BacktestPage() {
       return data;
     },
     onSuccess: (d) => {
-      setTrades(d.trades ?? []);
-      setMetrics(d.metrics ?? null);
+      setAllTrades(d.trades ?? []);
+      setAllMetrics(d.metrics ?? null);
     },
     onError: (e: any) => setErrorMsg(`Error: ${e.message}`),
   });
 
   const isDefault = JSON.stringify(cfg) === JSON.stringify(DEFAULT_CFG);
+
+  // Apply lookback filter client-side — no re-run needed
+  const cutoff = cfg.lookbackDays === 'all'
+    ? ''
+    : new Date(Date.now() - parseInt(cfg.lookbackDays) * 86400000).toISOString().slice(0, 10);
+  const trades  = cutoff ? (allTrades ?? []).filter(t => t.day0Date >= cutoff) : allTrades;
+  const metrics = trades && trades !== allTrades ? recomputeMetrics(trades) : allMetrics;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -534,6 +580,17 @@ export default function BacktestPage() {
                   <option value="yes">Required (strong flush)</option>
                 </select>
               </Field>
+
+              <Field label="Show Results From">
+                <select className={selectClass} value={cfg.lookbackDays} onChange={set('lookbackDays')}>
+                  <option value="30">Last 30 days</option>
+                  <option value="60">Last 60 days</option>
+                  <option value="90">Last 90 days</option>
+                  <option value="180">Last 6 months</option>
+                  <option value="365">Last 1 year</option>
+                  <option value="all">All time</option>
+                </select>
+              </Field>
             </div>
           </div>
 
@@ -565,18 +622,18 @@ export default function BacktestPage() {
         )}
 
         {/* Results */}
-        {!run.isPending && metrics && trades && (
+        {!run.isPending && metrics && trades !== null && (
           <>
             <MetricsSummary m={metrics} />
             {trades.length > 0
               ? <TradesTable trades={trades} />
-              : <p className="text-muted-foreground text-sm">No signals found with these parameters.</p>
+              : <p className="text-muted-foreground text-sm">No signals in this time window — try a wider lookback or loosen the thresholds.</p>
             }
           </>
         )}
 
         {/* Placeholder before first run */}
-        {!run.isPending && !metrics && !errorMsg && (
+        {!run.isPending && !allMetrics && !errorMsg && (
           <div className="text-center py-20 text-muted-foreground">
             <p className="text-base">Configure parameters above and click Run Backtest.</p>
             <p className="text-sm mt-1">
