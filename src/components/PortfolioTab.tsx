@@ -307,21 +307,46 @@ interface AddFormProps {
   onSaved: () => void;
 }
 
+function fmtExpiryLabel(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function AddForm({ onClose, onSaved }: AddFormProps) {
-  const [ticker, setTicker]   = useState('');
-  const [strike, setStrike]   = useState('');
-  const [expiry, setExpiry]   = useState('');
-  const [qty, setQty]         = useState('');
-  const [cost, setCost]       = useState('');
-  const [entryDate, setEntry] = useState(new Date().toISOString().slice(0, 10));
-  const [notes, setNotes]     = useState('');
-  const [error, setError]     = useState('');
-  const [saving, setSaving]   = useState(false);
+  const [ticker, setTicker]       = useState('');
+  const [strike, setStrike]       = useState('');
+  const [expiry, setExpiry]       = useState('');
+  const [qty, setQty]             = useState('');
+  const [cost, setCost]           = useState('');
+  const [notes, setNotes]         = useState('');
+  const [error, setError]         = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [expiries, setExpiries]   = useState<string[]>([]);
+  const [loadingExp, setLoadingExp] = useState(false);
+  const [expError, setExpError]   = useState('');
+
+  async function loadExpiries(t: string) {
+    if (t.length < 1) return;
+    setLoadingExp(true);
+    setExpError('');
+    setExpiries([]);
+    setExpiry('');
+    try {
+      const r = await fetch(`/api/option-expiries?ticker=${t}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? 'Failed to load expiries');
+      setExpiries(d.expiries ?? []);
+      if ((d.expiries ?? []).length === 0) setExpError('No LEAPS found for this ticker');
+    } catch (e: any) {
+      setExpError(e.message);
+    } finally {
+      setLoadingExp(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (!ticker || !strike || !expiry || !qty || !cost || !entryDate) {
+    if (!ticker || !strike || !expiry || !qty || !cost) {
       setError('All fields except notes are required.');
       return;
     }
@@ -330,7 +355,7 @@ function AddForm({ onClose, onSaved }: AddFormProps) {
       const r = await fetch('/api/portfolio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker, strike, expiry_date: expiry, quantity: qty, avg_cost: cost, entry_date: entryDate, notes }),
+        body: JSON.stringify({ ticker, strike, expiry_date: expiry, quantity: qty, avg_cost: cost, notes }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`);
@@ -344,6 +369,7 @@ function AddForm({ onClose, onSaved }: AddFormProps) {
 
   const fieldCls = 'w-full bg-muted border border-border rounded px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary';
   const labelCls = 'block text-xs text-muted-foreground mb-1';
+  const selectCls = cn(fieldCls, 'cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed');
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -356,6 +382,7 @@ function AddForm({ onClose, onSaved }: AddFormProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          {/* Ticker + Strike */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Ticker *</label>
@@ -364,6 +391,7 @@ function AddForm({ onClose, onSaved }: AddFormProps) {
                 placeholder="NVDA"
                 value={ticker}
                 onChange={e => setTicker(e.target.value.toUpperCase())}
+                onBlur={e => { if (e.target.value.length >= 1) loadExpiries(e.target.value.toUpperCase().trim()); }}
                 maxLength={6}
               />
             </div>
@@ -381,18 +409,36 @@ function AddForm({ onClose, onSaved }: AddFormProps) {
             </div>
           </div>
 
+          {/* Expiry dropdown */}
+          <div>
+            <label className={labelCls}>
+              Expiry *
+              {loadingExp && <span className="ml-2 text-muted-foreground/60">Loading…</span>}
+            </label>
+            <select
+              className={selectCls}
+              value={expiry}
+              onChange={e => setExpiry(e.target.value)}
+              disabled={loadingExp || expiries.length === 0}
+            >
+              <option value="">
+                {loadingExp
+                  ? 'Loading expiry dates…'
+                  : expiries.length === 0
+                    ? ticker ? 'Enter ticker above, then select' : 'Enter ticker first'
+                    : '— Select expiry —'}
+              </option>
+              {expiries.map(d => (
+                <option key={d} value={d}>{fmtExpiryLabel(d)}</option>
+              ))}
+            </select>
+            {expError && <p className="text-xs text-red-400 mt-1">{expError}</p>}
+          </div>
+
+          {/* Qty + Avg Cost */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Expiry Date *</label>
-              <input
-                className={fieldCls}
-                type="date"
-                value={expiry}
-                onChange={e => setExpiry(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Contracts (qty) *</label>
+              <label className={labelCls}>Contracts *</label>
               <input
                 className={fieldCls}
                 type="number"
@@ -402,9 +448,6 @@ function AddForm({ onClose, onSaved }: AddFormProps) {
                 onChange={e => setQty(e.target.value)}
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Avg Cost / Contract $ *</label>
               <input
@@ -416,26 +459,20 @@ function AddForm({ onClose, onSaved }: AddFormProps) {
                 value={cost}
                 onChange={e => setCost(e.target.value)}
               />
-              {cost && <p className="text-[10px] text-muted-foreground mt-1">
-                Basis: ${fmt(parseFloat(cost || '0') * parseInt(qty || '0') * 100, 0)}
-              </p>}
-            </div>
-            <div>
-              <label className={labelCls}>Entry Date *</label>
-              <input
-                className={fieldCls}
-                type="date"
-                value={entryDate}
-                onChange={e => setEntry(e.target.value)}
-              />
+              {cost && qty && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Basis: ${fmt(parseFloat(cost || '0') * parseInt(qty || '0') * 100, 0)}
+                </p>
+              )}
             </div>
           </div>
 
+          {/* Notes */}
           <div>
             <label className={labelCls}>Notes (optional)</label>
             <input
               className={fieldCls}
-              placeholder="e.g. AI infrastructure play, hold through volatility"
+              placeholder="e.g. AI infrastructure play"
               value={notes}
               onChange={e => setNotes(e.target.value)}
             />

@@ -22,8 +22,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === 'POST') {
-    const { ticker, strike, expiry_date, quantity, avg_cost, entry_date, notes } = req.body ?? {};
-    if (!ticker || !strike || !expiry_date || !quantity || !avg_cost || !entry_date) {
+    const { ticker, strike, expiry_date, quantity, avg_cost, notes } = req.body ?? {};
+    if (!ticker || !strike || !expiry_date || !quantity || !avg_cost) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     const { data, error } = await supabase
@@ -34,7 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         expiry_date,
         quantity: parseInt(quantity),
         avg_cost: parseFloat(avg_cost),
-        entry_date,
+        entry_date: new Date().toISOString().slice(0, 10),
         notes: notes || null,
       })
       .select()
