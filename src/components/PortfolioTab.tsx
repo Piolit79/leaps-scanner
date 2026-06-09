@@ -462,6 +462,95 @@ function AddForm({ onClose, onSaved }: AddFormProps) {
   );
 }
 
+// ── Score legend ─────────────────────────────────────────────────────────────
+
+function ScoreLegend() {
+  const signals: { action: SignalAction; score: string; what: string; do: string }[] = [
+    { action: 'HOLD_STRONG',  score: '7–10', what: 'Thesis fully intact',          do: 'Do nothing — volatility is noise' },
+    { action: 'HOLD',         score: '4–6',  what: 'On track',                     do: 'Monitor but no action needed' },
+    { action: 'WATCH',        score: '2–3',  what: 'One more bad thing and you act', do: 'Set a mental stop, stay alert' },
+    { action: 'TRIM',         score: '0–1',  what: 'Weakening but not dead',        do: 'Sell partial, hold the core' },
+    { action: 'EXIT',         score: '< 0',  what: 'Multiple thesis-breakers',      do: 'Cut the loss, free the capital' },
+    { action: 'ROLL',         score: '—',    what: 'Deep ITM + DTE < 90d',          do: 'Capture intrinsic, roll up & out' },
+    { action: 'RECOVER_COST', score: '+200%', what: 'Up 200%+ on option',           do: 'Sell enough to cover your cost basis, let rest ride free' },
+  ];
+
+  const axes = [
+    { label: 'Trend',     range: '-3 → +3', desc: 'Stock above 200d SMA? RSI in healthy range (40–70)?' },
+    { label: 'Time',      range: '-3 → +3', desc: 'Days to expiry. >180d = +3, <45d = -3. Theta kills fast.' },
+    { label: 'Structure', range: '-3 → +3', desc: 'Option ITM/OTM vs strike. Deep OTM + big loss = penalty.' },
+    { label: 'Momentum',  range: '-3 → +3', desc: '% off 52-week high. Within 10% = +2. >40% off = -2.' },
+  ];
+
+  return (
+    <div className="border border-border rounded-lg bg-card text-xs space-y-0 overflow-hidden">
+      {/* Signals */}
+      <div className="px-3 py-2.5 border-b border-border bg-muted/30">
+        <p className="font-semibold text-foreground text-[11px] uppercase tracking-wider">Signals</p>
+      </div>
+      <div className="divide-y divide-border/50">
+        {signals.map(s => {
+          const style = ACTION_STYLE[s.action];
+          return (
+            <div key={s.action} className="px-3 py-2 flex gap-2.5 items-start">
+              <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+                <span className={cn('text-[9px] font-bold tracking-widest px-1.5 py-0.5 rounded border whitespace-nowrap', style.cls)}>
+                  {style.label}
+                </span>
+                <span className="text-muted-foreground/60 font-mono text-[10px] w-8 shrink-0">{s.score}</span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-foreground/80 leading-tight">{s.what}</p>
+                <p className="text-muted-foreground leading-tight mt-0.5">{s.do}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Axes */}
+      <div className="px-3 py-2.5 border-t border-b border-border bg-muted/30">
+        <p className="font-semibold text-foreground text-[11px] uppercase tracking-wider">Score Axes (each -3 to +3)</p>
+      </div>
+      <div className="divide-y divide-border/50">
+        {axes.map(a => (
+          <div key={a.label} className="px-3 py-2">
+            <div className="flex items-baseline justify-between mb-0.5">
+              <span className="font-medium text-foreground/90">{a.label}</span>
+              <span className="font-mono text-muted-foreground/60 text-[10px]">{a.range}</span>
+            </div>
+            <p className="text-muted-foreground leading-snug">{a.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Total */}
+      <div className="px-3 py-2.5 border-t border-border bg-muted/30">
+        <p className="font-semibold text-foreground text-[11px] uppercase tracking-wider mb-1.5">Total Score</p>
+        <div className="space-y-1">
+          {[
+            { range: '7–10', action: 'HOLD_STRONG' as SignalAction },
+            { range: '4–6',  action: 'HOLD'        as SignalAction },
+            { range: '2–3',  action: 'WATCH'       as SignalAction },
+            { range: '0–1',  action: 'TRIM'        as SignalAction },
+            { range: '< 0',  action: 'EXIT'        as SignalAction },
+          ].map(r => (
+            <div key={r.range} className="flex items-center gap-2">
+              <span className="font-mono text-muted-foreground w-8 text-right shrink-0">{r.range}</span>
+              <span className={cn('text-[9px] font-bold tracking-widest px-1.5 py-0.5 rounded border', ACTION_STYLE[r.action].cls)}>
+                {ACTION_STYLE[r.action].label}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="text-muted-foreground mt-2 leading-snug">
+          ROLL and RECOVER COST override score — triggered by structure rules regardless of total.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main tab ──────────────────────────────────────────────────────────────────
 
 async function fetchLive(): Promise<{ positions: Position[]; refreshed_at: string }> {
@@ -563,36 +652,46 @@ export default function PortfolioTab() {
         </div>
       </div>
 
-      <main className="px-6 py-5 max-w-5xl mx-auto">
-        {isLoading && (
-          <div className="flex items-center gap-2 text-muted-foreground text-sm pt-8">
-            <Loader2 size={16} className="animate-spin" />
-            Loading positions and live market data…
-          </div>
-        )}
+      <main className="px-6 py-5 max-w-7xl mx-auto">
+        <div className="flex gap-6 items-start">
+          {/* Positions column */}
+          <div className="flex-1 min-w-0">
+            {isLoading && (
+              <div className="flex items-center gap-2 text-muted-foreground text-sm pt-8">
+                <Loader2 size={16} className="animate-spin" />
+                Loading positions and live market data…
+              </div>
+            )}
 
-        {error && !isLoading && (
-          <p className="text-destructive text-sm pt-8">Failed to load portfolio data.</p>
-        )}
+            {error && !isLoading && (
+              <p className="text-destructive text-sm pt-8">Failed to load portfolio data.</p>
+            )}
 
-        {!isLoading && !error && positions.length === 0 && (
-          <div className="text-center py-20 text-muted-foreground">
-            <p className="text-base">No positions yet.</p>
-            <p className="text-sm mt-1">Click "Add Position" to track your first LEAPS contract.</p>
-          </div>
-        )}
+            {!isLoading && !error && positions.length === 0 && (
+              <div className="text-center py-20 text-muted-foreground">
+                <p className="text-base">No positions yet.</p>
+                <p className="text-sm mt-1">Click "Add Position" to track your first LEAPS contract.</p>
+              </div>
+            )}
 
-        {!isLoading && sorted.length > 0 && (
-          <div className="space-y-3">
-            {sorted.map(p => (
-              <PositionCard
-                key={p.id}
-                pos={p}
-                onClose={id => close.mutate(id)}
-              />
-            ))}
+            {!isLoading && sorted.length > 0 && (
+              <div className="space-y-3">
+                {sorted.map(p => (
+                  <PositionCard
+                    key={p.id}
+                    pos={p}
+                    onClose={id => close.mutate(id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Legend column */}
+          <div className="w-72 shrink-0 sticky top-4">
+            <ScoreLegend />
+          </div>
+        </div>
       </main>
     </>
   );
