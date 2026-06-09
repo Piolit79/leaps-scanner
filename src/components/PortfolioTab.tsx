@@ -131,7 +131,11 @@ function PositionCard({
             <span className="font-bold text-foreground">{pos.ticker}</span>
             <span className="text-muted-foreground text-sm ml-2">
               ${fmt(pos.strike, 0)}C · {fmtExpiry(pos.expiry_date)}
-              {live && <span className="ml-2 text-xs">{live.dte}d left</span>}
+              {live && (
+            <span className={cn('ml-2 text-xs', live.dte === 0 ? 'text-red-400 font-semibold' : '')}>
+              {live.dte === 0 ? '⚠ Check expiry date' : `${live.dte}d left`}
+            </span>
+          )}
             </span>
           </div>
         </div>
