@@ -5,6 +5,7 @@ import { cn } from './lib/utils';
 import EventRow, { type EventResult } from './components/EventRow';
 import ScanFilters, { DEFAULT_FILTERS, type FilterState } from './components/ScanFilters';
 import BacktestPage from './components/BacktestPage';
+import PortfolioTab from './components/PortfolioTab';
 
 const queryClient = new QueryClient();
 
@@ -148,10 +149,16 @@ function ScannerPage() {
   );
 }
 
-type Tab = 'scanner' | 'backtest';
+type Tab = 'scanner' | 'backtest' | 'portfolio';
+
+const TAB_LABEL: Record<Tab, string> = {
+  scanner: 'Pullback Scanner',
+  backtest: 'Gap Dip Backtest',
+  portfolio: 'My Portfolio',
+};
 
 function App() {
-  const [tab, setTab] = useState<Tab>('scanner');
+  const [tab, setTab] = useState<Tab>('portfolio');
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -161,24 +168,26 @@ function App() {
           <h1 className="text-sm font-bold text-primary tracking-tight py-4 pr-6 border-r border-border">
             LEAPS Scanner
           </h1>
-          {(['scanner', 'backtest'] as Tab[]).map(t => (
+          {(['portfolio', 'scanner', 'backtest'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={cn(
-                'text-sm py-4 border-b-2 transition-colors capitalize',
+                'text-sm py-4 border-b-2 transition-colors',
                 tab === t
                   ? 'border-primary text-foreground font-semibold'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
-              {t === 'scanner' ? 'Pullback Scanner' : 'Gap Dip Backtest'}
+              {TAB_LABEL[t]}
             </button>
           ))}
         </div>
       </header>
 
-      {tab === 'scanner' ? <ScannerPage /> : <BacktestPage />}
+      {tab === 'scanner' && <ScannerPage />}
+      {tab === 'backtest' && <BacktestPage />}
+      {tab === 'portfolio' && <PortfolioTab />}
     </div>
   );
 }
