@@ -171,7 +171,7 @@ function PositionCard({
 
       {/* Live data row */}
       {live && (
-        <div className="px-4 pb-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+        <div className="px-4 pb-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
           {/* Left col: underlying */}
           <div className="space-y-1">
             <div className="flex items-baseline gap-2">
@@ -271,7 +271,7 @@ function PositionCard({
 
           {expanded && (
             <div className="mt-3 space-y-3">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                 <ScoreAxis label="Trend" value={score.axes.trend} />
                 <ScoreAxis label="Time (DTE)" value={score.axes.time} />
                 <ScoreAxis label="Structure" value={score.axes.structure} />
@@ -653,7 +653,7 @@ export default function PortfolioTab() {
       {showAdd && <AddForm onClose={() => setShowAdd(false)} onSaved={handleSaved} />}
 
       {/* Top bar */}
-      <div className="border-b border-border px-6 py-3 flex items-center justify-between">
+      <div className="border-b border-border px-3 sm:px-6 py-3 flex items-center justify-between gap-2">
         <div>
           {positions.length > 0 ? (
             <div className="flex items-center gap-4 text-sm">
@@ -668,7 +668,7 @@ export default function PortfolioTab() {
                 </span>
               )}
               {refreshedAt && (
-                <span className="text-xs text-muted-foreground">as of {refreshedAt}</span>
+                <span className="hidden sm:inline text-xs text-muted-foreground">as of {refreshedAt}</span>
               )}
             </div>
           ) : (
@@ -693,8 +693,8 @@ export default function PortfolioTab() {
         </div>
       </div>
 
-      <main className="px-6 py-5 max-w-7xl mx-auto">
-        <div className="flex gap-6 items-start">
+      <main className="px-3 sm:px-6 py-5 max-w-7xl mx-auto">
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* Positions column */}
           <div className="flex-1 min-w-0">
             {isLoading && (
@@ -729,7 +729,7 @@ export default function PortfolioTab() {
           </div>
 
           {/* Legend column */}
-          <div className="w-72 shrink-0 sticky top-4">
+          <div className="w-full lg:w-72 lg:shrink-0 lg:sticky lg:top-4">
             <ScoreLegend />
           </div>
         </div>

@@ -154,11 +154,11 @@ export default function EventRow({ result }: { result: EventResult }) {
     <div className="border border-border rounded-lg mb-2 transition-colors">
       {/* Summary row */}
       <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 rounded-lg"
+        className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 cursor-pointer hover:bg-muted/20 rounded-lg"
         onClick={() => setExpanded(x => !x)}
       >
         {/* Ticker */}
-        <div className="w-16 flex-shrink-0">
+        <div className="w-12 sm:w-16 flex-shrink-0">
           <span className="font-bold text-sm">{result.ticker}</span>
         </div>
 
@@ -168,20 +168,20 @@ export default function EventRow({ result }: { result: EventResult }) {
         </div>
 
         {/* Price */}
-        <div className="font-mono text-sm w-20 text-right flex-shrink-0">
+        <div className="font-mono text-sm w-16 sm:w-20 text-right flex-shrink-0">
           ${fmt(result.current_price, 2)}
         </div>
 
         {/* Key metrics */}
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           <span className={cn('font-mono text-sm font-semibold', dropColor)}>
             {fmt(sig.dailyChangePct, 1)}%
           </span>
           <RsiBadge rsi={sig.rsi14} />
-          <span className="text-xs text-muted-foreground font-mono">
+          <span className="hidden sm:inline text-xs text-muted-foreground font-mono">
             {fmt(sig.relVolume, 1)}× vol
           </span>
-          <span className="text-xs text-muted-foreground font-mono">
+          <span className="hidden sm:inline text-xs text-muted-foreground font-mono">
             {fmt(sig.pctFrom52wHigh, 1)}% hi
           </span>
         </div>
@@ -193,9 +193,9 @@ export default function EventRow({ result }: { result: EventResult }) {
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="border-t border-border px-4 pb-4 pt-3 space-y-4">
+        <div className="border-t border-border px-3 sm:px-4 pb-4 pt-3 space-y-4">
           {/* Metrics grid */}
-          <div className="grid grid-cols-4 gap-4 bg-muted/10 rounded p-3 border border-border">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 bg-muted/10 rounded p-3 border border-border">
             <MetricRow
               label="Daily Chg"
               value={`${fmt(sig.dailyChangePct, 2)}%`}

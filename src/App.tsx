@@ -76,7 +76,7 @@ function ScannerPage() {
 
   return (
     <>
-      <div className="border-b border-border px-6 py-3 flex items-center justify-between">
+      <div className="border-b border-border px-3 sm:px-6 py-3 flex items-center justify-between">
         <div>
           <p className="text-xs text-muted-foreground">
             Large-cap uptrend pullbacks · RSI 30–45 · 9–12mo LEAPS · ~200 large-caps
@@ -95,15 +95,15 @@ function ScannerPage() {
       </div>
 
       {scan.isPending && (
-        <div className="mx-6 mt-4 p-3 bg-muted rounded text-xs text-muted-foreground">
+        <div className="mx-3 sm:mx-6 mt-4 p-3 bg-muted rounded text-xs text-muted-foreground">
           Fetching 2 years of bars for ~200 large-caps and computing metrics — takes 3–5 min.
         </div>
       )}
       {msg && !scan.isPending && (
-        <div className="mx-6 mt-4 p-3 bg-muted rounded text-xs text-muted-foreground">{msg}</div>
+        <div className="mx-3 sm:mx-6 mt-4 p-3 bg-muted rounded text-xs text-muted-foreground">{msg}</div>
       )}
 
-      <main className="px-6 py-5 max-w-5xl mx-auto">
+      <main className="px-3 sm:px-6 py-5 max-w-5xl mx-auto">
         <ScanFilters
           filters={filters}
           onChange={setFilters}
@@ -163,17 +163,17 @@ function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Top nav */}
-      <header className="border-b border-border px-6 py-0 flex items-center gap-0">
-        <div className="flex items-center gap-6 flex-1">
-          <h1 className="text-sm font-bold text-primary tracking-tight py-4 pr-6 border-r border-border">
-            LEAPS Scanner
+      <header className="border-b border-border px-3 sm:px-6 py-0 flex items-center gap-0 overflow-x-auto">
+        <div className="flex items-center gap-4 sm:gap-6 flex-shrink-0">
+          <h1 className="text-sm font-bold text-primary tracking-tight py-4 pr-3 sm:pr-6 border-r border-border whitespace-nowrap">
+            LEAPS
           </h1>
           {(['portfolio', 'scanner', 'backtest'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={cn(
-                'text-sm py-4 border-b-2 transition-colors',
+                'text-sm py-4 border-b-2 transition-colors whitespace-nowrap',
                 tab === t
                   ? 'border-primary text-foreground font-semibold'
                   : 'border-transparent text-muted-foreground hover:text-foreground',

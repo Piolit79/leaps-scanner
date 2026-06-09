@@ -48,7 +48,7 @@ export default function ScanFilters({ filters, onChange, onReset }: Props) {
   const isDefault = JSON.stringify(filters) === JSON.stringify(DEFAULT_FILTERS);
 
   return (
-    <div className="bg-muted/20 border border-border rounded-lg px-4 py-3 mb-5">
+    <div className="bg-muted/20 border border-border rounded-lg px-3 sm:px-4 py-3 mb-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Scan Filters
@@ -63,7 +63,7 @@ export default function ScanFilters({ filters, onChange, onReset }: Props) {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-4">
+      <div className="flex flex-wrap gap-2 sm:gap-4">
         <Field label="Market Cap">
           <select className={selectClass} value={filters.minCapB} onChange={set('minCapB')}>
             <option value="5">≥ $5B</option>
